@@ -1,6 +1,11 @@
+# Virtual Environments
 venv/
+env/
+.venv/
+
+# Python cache and bytecode
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
 *.pyw
@@ -8,3 +13,12 @@ __pycache__/
 *.pywz
 *.pyzw
 *.pyzwz
+
+# Environment variables
+.env
+.env.local
+
+# Project-specific files
+.python-version
+.idea/
+.vscode/
