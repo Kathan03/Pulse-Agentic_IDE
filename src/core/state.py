@@ -48,6 +48,7 @@ class AgentState(TypedDict):
 
     # Execution results
     files_modified: List[str]  # Paths of modified files
+    files_touched: List[str]  # Tracks which files were modified for Tester validation
     code_changes: str  # Description of code modifications
     test_results: dict  # Validation results
 
@@ -84,6 +85,7 @@ def create_initial_state(
         file_context="",
         feedback="",
         files_modified=[],
+        files_touched=[],
         code_changes="",
         test_results={},
         workspace_path=workspace_path
