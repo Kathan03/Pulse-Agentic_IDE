@@ -35,7 +35,6 @@ class Sidebar:
         self.recent_workspaces = []  # List of recently opened workspace paths
         self.file_picker = None  # Will be initialized when page is available
         self.current_mode = "Agent Mode"  # Default mode
-        self.feedback_field = None  # Reference to feedback TextField
         self.file_controls = {}  # Dictionary to track file TextButton controls by path
 
         # Load recent workspaces from config file
@@ -48,61 +47,17 @@ class Sidebar:
             expand=True
         )
 
-        # Current path display
+        # Current workspace folder name display (uppercase, professional styling)
         self.path_text = ft.Text(
             "",
-            size=Fonts.FONT_SIZE_SMALL,
-            color=VSCodeColors.SIDEBAR_TITLE_FOREGROUND,
-            italic=True,
-            max_lines=2,
-            overflow=ft.TextOverflow.ELLIPSIS
+            size=Fonts.FONT_SIZE_SMALL - 1,  # Smaller, more subtle (10px)
+            color=VSCodeColors.ACTIVITY_BAR_INACTIVE_FOREGROUND,  # Muted color
+            weight=ft.FontWeight.W_500,  # Medium weight
+            font_family=Fonts.SANS_SERIF_PRIMARY,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
         )
 
-        # Workspace switcher dropdown
-        self.workspace_dropdown = ft.Dropdown(
-            label="Recent Workspaces",
-            hint_text="Select a recent workspace",
-            options=[],
-            width=230,
-            on_change=lambda e: self.switch_workspace(e.control.value),
-            text_size=Fonts.FONT_SIZE_SMALL,
-            dense=True,
-            bgcolor=VSCodeColors.DROPDOWN_BACKGROUND,
-            border_color=VSCodeColors.DROPDOWN_BORDER,
-            color=VSCodeColors.DROPDOWN_FOREGROUND,
-        )
-
-        # Navigation buttons
-        self.back_button = ft.IconButton(
-            icon=ft.Icons.ARROW_BACK,
-            icon_size=16,
-            tooltip="Go to parent directory",
-            on_click=lambda _: self.go_back(),
-            disabled=True,
-            icon_color=VSCodeColors.SIDEBAR_FOREGROUND
-        )
-
-        self.home_button = ft.IconButton(
-            icon=ft.Icons.HOME,
-            icon_size=16,
-            tooltip="Go to workspace root",
-            on_click=lambda _: self.go_to_root(),
-            disabled=True,
-            icon_color=VSCodeColors.SIDEBAR_FOREGROUND
-        )
-
-        # Open folder button
-        self.open_folder_button = ft.ElevatedButton(
-            text="Open Folder",
-            icon=ft.Icons.FOLDER_OPEN,
-            on_click=self.open_folder_dialog,
-            style=ft.ButtonStyle(
-                bgcolor=VSCodeColors.BUTTON_SECONDARY_BACKGROUND,
-                color=VSCodeColors.BUTTON_SECONDARY_FOREGROUND,
-                padding=ft.padding.symmetric(horizontal=Spacing.PADDING_MEDIUM, vertical=Spacing.PADDING_SMALL)
-            ),
-            height=32
-        )
 
         # Mode selector dropdown - More compact
         self.mode_selector = ft.Dropdown(
@@ -123,7 +78,7 @@ class Sidebar:
         )
 
         # Create Pulse logo image for button
-        pulse_logo = create_logo_image(width=24, height=24)
+        pulse_logo = create_logo_image(width=40, height=40)
 
         # Open Agent button - Compact logo button
         self.open_agent_button = ft.Container(
@@ -140,50 +95,22 @@ class Sidebar:
             height=38,
         )
 
-        # Feedback TextField for Code Intelligence
-        self.feedback_field = ft.TextField(
-            hint_text="Describe what went wrong...",
-            hint_style=ft.TextStyle(color=VSCodeColors.INPUT_PLACEHOLDER_FOREGROUND),
-            multiline=True,
-            min_lines=2,
-            max_lines=4,
-            text_size=Fonts.FONT_SIZE_SMALL,
-            bgcolor=VSCodeColors.INPUT_BACKGROUND,
-            color=VSCodeColors.INPUT_FOREGROUND,
-            border_color=VSCodeColors.INPUT_BORDER,
-            focused_border_color=VSCodeColors.INPUT_ACTIVE_BORDER,
-            on_submit=self._on_feedback_submit,
-        )
-
-        # Build the main container with three sections
+        # Build the main container with two sections (PULSE AGENT + File Tree only)
         self.container = ft.Container(
             width=250,
             bgcolor=VSCodeColors.SIDEBAR_BACKGROUND,
             padding=Spacing.PADDING_MEDIUM,
             content=ft.Column(
                 controls=[
-                    # Header with logo and workspace label
-                    ft.Row(
-                        controls=[
-                            create_logo_image(width=28, height=28),
-                            ft.Text(
-                                "PULSE IDE",
-                                size=Fonts.FONT_SIZE_NORMAL + 1,
-                                weight=ft.FontWeight.BOLD,
-                                color=VSCodeColors.SIDEBAR_TITLE_FOREGROUND
-                            ),
-                        ],
-                        spacing=Spacing.PADDING_SMALL,
-                        alignment=ft.MainAxisAlignment.START
-                    ),
-                    ft.Divider(height=1, color=VSCodeColors.SIDEBAR_BORDER),
-
                     # ===== SECTION 1: PULSE AGENT =====
-                    ft.Text(
-                        "PULSE AGENT",
-                        size=Fonts.FONT_SIZE_SMALL,
-                        weight=ft.FontWeight.BOLD,
-                        color=VSCodeColors.ACTIVITY_BAR_INACTIVE_FOREGROUND
+                    ft.Container(
+                        content=ft.Text(
+                            "PULSE AGENT",
+                            size=Fonts.FONT_SIZE_SMALL,
+                            weight=ft.FontWeight.BOLD,
+                            color=VSCodeColors.ACTIVITY_BAR_INACTIVE_FOREGROUND
+                        ),
+                        padding=ft.padding.only(bottom=Spacing.PADDING_SMALL),  # Add vertical space below
                     ),
                     # Mode selector and Open Agent button in horizontal row
                     ft.Row(
@@ -194,85 +121,28 @@ class Sidebar:
                         spacing=Spacing.PADDING_SMALL,
                         alignment=ft.MainAxisAlignment.START,
                     ),
-                    ft.Divider(height=1, color=VSCodeColors.SIDEBAR_BORDER),
-
-                    # ===== SECTION 2: CODE INTELLIGENCE =====
-                    ft.Text(
-                        "CODE INTELLIGENCE",
-                        size=Fonts.FONT_SIZE_SMALL,
-                        weight=ft.FontWeight.BOLD,
-                        color=VSCodeColors.ACTIVITY_BAR_INACTIVE_FOREGROUND
-                    ),
-                    # Customizer agent feedback interface
                     ft.Container(
-                        content=ft.Column(
-                            controls=[
-                                ft.Text(
-                                    "Report issues with generated code:",
-                                    size=Fonts.FONT_SIZE_SMALL,
-                                    color=VSCodeColors.SIDEBAR_FOREGROUND,
-                                ),
-                                self.feedback_field,
-                                ft.ElevatedButton(
-                                    text="Submit Feedback",
-                                    icon=ft.Icons.SEND,
-                                    on_click=self._on_feedback_submit,
-                                    style=ft.ButtonStyle(
-                                        bgcolor=VSCodeColors.BUTTON_SECONDARY_BACKGROUND,
-                                        color=VSCodeColors.BUTTON_SECONDARY_FOREGROUND,
-                                        padding=ft.padding.symmetric(horizontal=Spacing.PADDING_SMALL, vertical=Spacing.PADDING_SMALL)
-                                    ),
-                                    height=28,
-                                ),
-                            ],
-                            spacing=Spacing.PADDING_SMALL,
-                        ),
-                        bgcolor=VSCodeColors.EDITOR_BACKGROUND,
-                        padding=Spacing.PADDING_SMALL,
-                        border_radius=Spacing.BORDER_RADIUS_SMALL,
+                        content=ft.Divider(height=2, thickness=2, color=VSCodeColors.SIDEBAR_BORDER),
+                        padding=ft.padding.symmetric(vertical=Spacing.PADDING_SMALL),  # Add vertical space around divider
                     ),
-                    ft.Divider(height=1, color=VSCodeColors.SIDEBAR_BORDER),
 
-                    # ===== SECTION 3: WORKSPACE =====
-                    ft.Text(
-                        "WORKSPACE",
-                        size=Fonts.FONT_SIZE_SMALL,
-                        weight=ft.FontWeight.BOLD,
-                        color=VSCodeColors.ACTIVITY_BAR_INACTIVE_FOREGROUND
+                    # ===== SECTION 2: PROJECT STRUCTURE =====
+                    # Current workspace folder name (compact)
+                    ft.Container(
+                        content=self.path_text,
+                        padding=ft.padding.only(top=4, bottom=4),  # Increased from 2 to 4
                     ),
-                    # Open folder button
-                    self.open_folder_button,
-                    # Recent workspaces dropdown
-                    self.workspace_dropdown,
-                    ft.Divider(height=1, color=VSCodeColors.SIDEBAR_BORDER),
-                    # Navigation bar
-                    ft.Row(
-                        controls=[
-                            self.back_button,
-                            self.home_button,
-                            ft.Container(
-                                content=self.path_text,
-                                expand=True
-                            )
-                        ],
-                        spacing=5,
-                        alignment=ft.MainAxisAlignment.START
-                    ),
-                    ft.Divider(height=1, color=VSCodeColors.SIDEBAR_BORDER),
-                    # File list container
+                    # File tree container
                     ft.Container(
                         content=self.file_list_column,
                         expand=True
                     )
                 ],
-                spacing=3,
+                spacing=2,  # Reduced even more for tighter layout
                 expand=True
             )
         )
 
-        # Populate dropdown with loaded workspaces
-        if self.recent_workspaces:
-            self._update_workspace_dropdown()
 
     def get_control(self):
         """
@@ -294,9 +164,128 @@ class Sidebar:
         page.overlay.append(self.file_picker)
         page.update()
 
+    def _build_file_tree_node(self, item_path: Path, depth: int = 0) -> ft.Control:
+        """
+        Build a file tree node (folder with ExpansionTile or file with TextButton).
+
+        Args:
+            item_path: Path to the file or directory
+            depth: Current depth in the tree (for indentation)
+
+        Returns:
+            ft.Control for the tree node
+        """
+        try:
+            # Skip hidden files and ignored directories
+            if item_path.name.startswith('.') or item_path.name in ['__pycache__', 'node_modules', 'venv']:
+                return None
+
+            if item_path.is_dir():
+                # Build folder with ExpansionTile
+                # Get children
+                try:
+                    children = sorted(item_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+                except PermissionError:
+                    return None
+
+                # Build child controls recursively
+                child_controls = []
+                for child in children:
+                    child_node = self._build_file_tree_node(child, depth + 1)
+                    if child_node:
+                        child_controls.append(child_node)
+
+                # Create ExpansionTile for folder - ABSOLUTE MINIMAL SPACING
+                # Remove leading icon to save space, use icon in title instead
+                folder_title = ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.FOLDER, color="#7FBFFF", size=10),
+                        ft.Text(
+                            item_path.name,
+                            size=10,  # Tiny font
+                            color="#7FBFFF",
+                            weight=ft.FontWeight.W_400,
+                        ),
+                    ],
+                    spacing=4,
+                    tight=True,  # Remove extra space
+                )
+
+                return ft.ExpansionTile(
+                    title=folder_title,
+                    initially_expanded=depth == 0,
+                    controls=child_controls,
+                    controls_padding=ft.padding.all(0),  # ZERO
+                    tile_padding=ft.padding.only(left=depth * 8, top=0, bottom=0, right=0),  # ZERO vertical
+                    min_tile_height=16,  # ABSOLUTE MINIMUM (18px -> 16px)
+                    dense=True,
+                    visual_density=ft.VisualDensity.COMPACT,  # Extra compact
+                    collapsed_bgcolor=VSCodeColors.SIDEBAR_BACKGROUND,
+                    bgcolor=VSCodeColors.SIDEBAR_BACKGROUND,
+                    icon_color="#7FBFFF",
+                    collapsed_icon_color="#7FBFFF",
+                    maintain_state=True,
+                )
+            else:
+                # Build file with TextButton
+                # Determine icon and color based on file type
+                if item_path.suffix == '.st':
+                    icon = ft.Icons.CODE
+                    color = "#98C379"  # Green for PLC files
+                elif item_path.suffix == '.py':
+                    icon = ft.Icons.CODE
+                    color = "#FFD700"  # Gold for Python
+                elif item_path.suffix in ['.md', '.txt']:
+                    icon = ft.Icons.DESCRIPTION
+                    color = "#AAAAAA"
+                else:
+                    icon = ft.Icons.INSERT_DRIVE_FILE
+                    color = "#CCCCCC"
+
+                # Create file button - ABSOLUTE MINIMAL spacing, LEFT aligned
+                file_button = ft.Container(
+                    content=ft.Row(
+                        controls=[
+                            ft.Icon(icon, color=color, size=10),
+                            ft.Text(
+                                item_path.name,
+                                size=10,  # Tiny font to match folders
+                                color=color,
+                                weight=ft.FontWeight.W_400,
+                            ),
+                        ],
+                        spacing=4,
+                        tight=True,  # Remove extra space
+                        alignment=ft.MainAxisAlignment.START,  # LEFT align file names
+                    ),
+                    padding=ft.padding.only(left=depth * 8 + 16, top=0, bottom=0, right=0),  # ZERO vertical
+                    ink=True,
+                    on_click=lambda e, path=item_path: self.on_item_click(path),
+                    border_radius=Spacing.BORDER_RADIUS_SMALL,
+                    on_hover=lambda e: self._on_file_hover(e),
+                    height=16,  # Match ExpansionTile min_tile_height
+                    alignment=ft.alignment.center_left,  # LEFT align container content
+                )
+
+                # Store reference for dirty state tracking
+                self.file_controls[str(item_path.resolve())] = file_button
+
+                return file_button
+
+        except (PermissionError, OSError):
+            return None
+
+    def _on_file_hover(self, e):
+        """Handle file item hover effect."""
+        if e.data == "true":  # Mouse enter
+            e.control.bgcolor = VSCodeColors.LIST_HOVER_BACKGROUND
+        else:  # Mouse leave
+            e.control.bgcolor = None
+        e.control.update()
+
     def load_directory(self, path: str, set_as_root: bool = False):
         """
-        Load and display files from the specified directory.
+        Load and display files from the specified directory with VS Code-style tree.
 
         Args:
             path: Path to the directory to load
@@ -313,84 +302,23 @@ class Sidebar:
                 # Add to recent workspaces
                 self._add_to_recent_workspaces(str(directory))
 
-            # Update path display
-            self.path_text.value = str(directory)
+            # Update path display - show only folder name in UPPERCASE (VS Code style)
+            self.path_text.value = directory.name.upper()
 
-            # Update navigation button states
-            # Back button is enabled if we have a parent directory
-            self.back_button.disabled = (directory.parent == directory)
-            # Home button is enabled if we're not at workspace root
-            self.home_button.disabled = (directory == self.workspace_root)
 
             # Clear existing file list and file controls dictionary
             self.file_list_column.controls.clear()
             self.file_controls.clear()
 
-            # Get all files and directories
-            items = []
-            try:
-                items = sorted(directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
-            except PermissionError:
-                self.file_list_column.controls.append(
-                    ft.Text(
-                        "⚠️ Permission denied",
-                        size=11,
-                        color="#FF5555"
-                    )
-                )
-                if self.container.page:
-                    self.container.update()
-                return
-
-            # Display directories first, then files
-            for item in items:
-                try:
-                    # Skip hidden files and common ignored directories
-                    if item.name.startswith('.') or item.name in ['__pycache__', 'node_modules', 'venv']:
-                        continue
-
-                    # Determine icon and color based on type
-                    if item.is_dir():
-                        icon = "📁"
-                        color = "#7FBFFF"
-                    else:
-                        # Different icons for different file types
-                        if item.suffix == '.st':
-                            icon = "📄"
-                            color = "#98C379"  # Green for PLC files
-                        elif item.suffix == '.py':
-                            icon = "🐍"
-                            color = "#FFD700"  # Gold for Python
-                        elif item.suffix in ['.md', '.txt']:
-                            icon = "📝"
-                            color = "#AAAAAA"
-                        else:
-                            icon = "📄"
-                            color = "#CCCCCC"
-
-                    # Create clickable file/directory button
-                    file_button = ft.TextButton(
-                        text=f"{icon} {item.name}",
-                        style=ft.ButtonStyle(
-                            color=color,
-                            padding=ft.padding.symmetric(horizontal=5, vertical=5),
-                            alignment=ft.alignment.center_left
-                        ),
-                        on_click=lambda e, path=item: self.on_item_click(path)
-                    )
-
-                    # Store reference to file controls for dirty state tracking (files only, not directories)
-                    if item.is_file():
-                        self.file_controls[str(item.resolve())] = file_button
-
-                    self.file_list_column.controls.append(file_button)
-
-                except (PermissionError, OSError) as e:
-                    # Skip items we can't access
-                    continue
-
-            # If no items were added (empty directory)
-            if len(self.file_list_column.controls) == 1:  # Only the header
+            # Build the tree structure
+            tree_node = self._build_file_tree_node(directory, depth=0)
+            if tree_node and isinstance(tree_node, ft.ExpansionTile):
+                # Add children of the root directory directly (don't nest root in itself)
+                for child_control in tree_node.controls:
+                    if child_control:
+                        self.file_list_column.controls.append(child_control)
+            elif not tree_node:
+                # Empty directory
                 self.file_list_column.controls.append(
                     ft.Text(
                         "📭 Empty directory",
@@ -419,30 +347,18 @@ class Sidebar:
 
     def on_item_click(self, path: Path):
         """
-        Handle click events on files/directories.
+        Handle click events on files (directories don't navigate anymore).
 
         Args:
             path: Path object of the clicked item
         """
-        if path.is_dir():
-            # Navigate into directory
-            self.load_directory(str(path))
-        else:
+        # Only handle file clicks - directories are expanded via ExpansionTile
+        if path.is_file():
             # Open file in the editor manager
             if self.editor_manager:
                 self.editor_manager.open_file(str(path))
             else:
                 print(f"Selected file: {path} (No editor manager connected)")
-
-    def go_back(self):
-        """Navigate to the parent directory."""
-        if self.current_path and self.current_path.parent != self.current_path:
-            self.load_directory(str(self.current_path.parent))
-
-    def go_to_root(self):
-        """Navigate to the workspace root directory."""
-        if self.workspace_root:
-            self.load_directory(str(self.workspace_root))
 
     def open_folder_dialog(self, e):
         """
@@ -497,37 +413,8 @@ class Sidebar:
         # Keep only last 10 workspaces
         self.recent_workspaces = self.recent_workspaces[:10]
 
-        # Update dropdown options
-        self._update_workspace_dropdown()
-
         # Save to config file
         self._save_workspaces_to_config()
-
-    def _update_workspace_dropdown(self):
-        """Update the workspace dropdown with recent workspaces."""
-        self.workspace_dropdown.options = [
-            ft.dropdown.Option(
-                key=path,
-                text=Path(path).name + f" ({path})"[:50] + "..."
-                if len(path) > 50
-                else Path(path).name
-            )
-            for path in self.recent_workspaces
-        ]
-
-        # Update the UI if page is available
-        if self.container.page:
-            self.workspace_dropdown.update()
-
-    def switch_workspace(self, workspace_path: str):
-        """
-        Switch to a different workspace from the recent workspaces list.
-
-        Args:
-            workspace_path: Path to the workspace to switch to
-        """
-        if workspace_path and Path(workspace_path).is_dir():
-            self.load_directory(workspace_path, set_as_root=True)
 
     def _on_mode_changed(self, e):
         """
@@ -561,24 +448,6 @@ class Sidebar:
         else:
             print("No editor manager connected")
 
-    def _on_feedback_submit(self, e):
-        """
-        Handle feedback submission from Code Intelligence section.
-        Sends user feedback about generated code to the Customizer agent.
-
-        Args:
-            e: Event object from button click or text field submit
-        """
-        if self.feedback_field.value and self.feedback_field.value.strip():
-            feedback_text = self.feedback_field.value.strip()
-            print(f"User feedback submitted: {feedback_text}")
-            # TODO: Wire this to Customizer agent for feedback processing
-
-            # Clear the feedback field
-            self.feedback_field.value = ""
-            if self.feedback_field.page:
-                self.feedback_field.update()
-
     def get_current_mode(self):
         """
         Get the currently selected mode.
@@ -587,6 +456,17 @@ class Sidebar:
             Current mode string ("Agent Mode", "Plan Mode", or "Ask Mode")
         """
         return self.current_mode
+
+    def get_selected_mode(self):
+        """
+        Get the currently selected mode.
+        Alias for get_current_mode() for API consistency.
+
+        Returns:
+            Current mode string ("Agent Mode", "Plan Mode", or "Ask Mode")
+            Defaults to "Ask Mode" if not set.
+        """
+        return self.current_mode if self.current_mode else "Ask Mode"
 
     def _load_workspaces_from_config(self):
         """
@@ -647,26 +527,21 @@ class Sidebar:
 
         # Find the control for this file
         if normalized_path in self.file_controls:
-            file_button = self.file_controls[normalized_path]
-            current_text = file_button.text
+            file_container = self.file_controls[normalized_path]
 
-            # Get the filename (extract from the current text)
-            # Format is: "icon filename" or "icon filename *"
-            # Split by space and handle icon + filename
-            parts = current_text.split(" ")
-            if len(parts) >= 2:
-                icon = parts[0]
-                filename_parts = parts[1:]
-                filename = " ".join(filename_parts).replace(" *", "").strip()
+            # The container has a Row with an Icon and Text
+            if isinstance(file_container, ft.Container) and isinstance(file_container.content, ft.Row):
+                row = file_container.content
+                if len(row.controls) >= 2 and isinstance(row.controls[1], ft.Text):
+                    text_control = row.controls[1]
+                    filename = text_control.value.replace(" *", "").strip()
 
-                # Update the text based on dirty state
-                if is_dirty:
-                    new_text = f"{icon} {filename} *"
-                else:
-                    new_text = f"{icon} {filename}"
+                    # Update the text based on dirty state
+                    if is_dirty:
+                        text_control.value = f"{filename} *"
+                    else:
+                        text_control.value = filename
 
-                file_button.text = new_text
-
-                # Update UI if page is available
-                if file_button.page:
-                    file_button.update()
+                    # Update UI if page is available
+                    if text_control.page:
+                        text_control.update()

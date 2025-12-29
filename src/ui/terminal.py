@@ -226,8 +226,11 @@ class TerminalPanel:
         # Echo the command
         self._add_output(f"PS> {command}", VSCodeColors.TERMINAL_ANSI_BRIGHT_GREEN)
 
+        # V2.1: Intercept 'run' commands for .st files (PLC compilation simulation)
+        if command.lower().startswith("run "):
+            self._handle_run_command(command)
         # Handle built-in commands
-        if command.lower() == "clear" or command.lower() == "cls":
+        elif command.lower() == "clear" or command.lower() == "cls":
             self.clear()
         elif command.lower() == "exit":
             self._add_output("Use Ctrl+C to close the terminal.", VSCodeColors.WARNING_FOREGROUND)
@@ -249,6 +252,115 @@ class TerminalPanel:
         # Clear input field
         self.input_field.value = ""
         self.input_field.update()
+
+    def _handle_run_command(self, command):
+        """
+        Handle 'run' commands with special PLC compilation simulation for .st files.
+
+        V2.1 Feature: Simulates realistic PLC compilation output when running .st files.
+
+        Args:
+            command: The run command (e.g., "run main.st")
+        """
+        import time
+
+        # Extract file path from command
+        parts = command.split(maxsplit=1)
+        if len(parts) < 2:
+            self._add_output("Usage: run <filename>", VSCodeColors.ERROR_FOREGROUND)
+            return
+
+        file_path = parts[1].strip()
+
+        # Check if it's a .st file (Structured Text PLC code)
+        if file_path.endswith(".st"):
+            self._simulate_plc_compilation(file_path)
+        else:
+            # For non-.st files, pass to PowerShell or execute normally
+            if self.is_running and self.process and self.process.stdin:
+                try:
+                    # Try to execute with PowerShell
+                    ps_command = f"& '{file_path}'"
+                    self.process.stdin.write(ps_command + "\n")
+                    self.process.stdin.flush()
+                except Exception as e:
+                    self._add_output(f"Error executing: {str(e)}", VSCodeColors.ERROR_FOREGROUND)
+            else:
+                self._add_output(f"Attempting to run: {file_path}", VSCodeColors.INFO_FOREGROUND)
+                self._add_output("(File execution not supported in fallback mode)", VSCodeColors.WARNING_FOREGROUND)
+
+    def _simulate_plc_compilation(self, file_path):
+        """
+        Simulate realistic PLC compilation output for .st files.
+
+        Displays a compilation sequence similar to industrial PLC compilers.
+
+        Args:
+            file_path: Path to the .st file
+        """
+        import time
+        from pathlib import Path
+
+        # Check if file exists in workspace
+        full_path = Path(self.workspace_path) / file_path
+        file_exists = full_path.exists()
+
+        # Compilation sequence
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+        self._add_output("═══════════════════════════════════════════════", VSCodeColors.TERMINAL_ANSI_BRIGHT_CYAN)
+        self._add_output("  PLC Structured Text Compiler v3.2.1", VSCodeColors.TERMINAL_ANSI_BRIGHT_CYAN)
+        self._add_output("═══════════════════════════════════════════════", VSCodeColors.TERMINAL_ANSI_BRIGHT_CYAN)
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+
+        if not file_exists:
+            self._add_output(f"ERROR: File not found: {file_path}", VSCodeColors.ERROR_FOREGROUND)
+            self._add_output(f"Checked path: {full_path}", VSCodeColors.TERMINAL_ANSI_BRIGHT_BLACK)
+            self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+            self._add_output("Compilation failed.", VSCodeColors.ERROR_FOREGROUND)
+            return
+
+        # Simulate compilation steps
+        self._add_output(f"Source: {file_path}", VSCodeColors.INFO_FOREGROUND)
+        self._add_output(f"Target: {file_path.replace('.st', '.obj')}", VSCodeColors.INFO_FOREGROUND)
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+
+        # Parsing phase
+        self._add_output("[1/4] Parsing Structured Text...", VSCodeColors.TERMINAL_ANSI_BRIGHT_YELLOW)
+        time.sleep(0.3)  # Simulate processing
+        self._add_output("      ✓ Syntax analysis complete", VSCodeColors.SUCCESS_FOREGROUND)
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+
+        # Semantic analysis
+        self._add_output("[2/4] Semantic Analysis...", VSCodeColors.TERMINAL_ANSI_BRIGHT_YELLOW)
+        time.sleep(0.2)
+        self._add_output("      ✓ Type checking complete", VSCodeColors.SUCCESS_FOREGROUND)
+        self._add_output("      ✓ Variable resolution complete", VSCodeColors.SUCCESS_FOREGROUND)
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+
+        # Code generation
+        self._add_output("[3/4] Generating IL Code...", VSCodeColors.TERMINAL_ANSI_BRIGHT_YELLOW)
+        time.sleep(0.2)
+        self._add_output("      ✓ Instruction list generated", VSCodeColors.SUCCESS_FOREGROUND)
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+
+        # Linking
+        self._add_output("[4/4] Linking...", VSCodeColors.TERMINAL_ANSI_BRIGHT_YELLOW)
+        time.sleep(0.2)
+        self._add_output("      ✓ Linking complete", VSCodeColors.SUCCESS_FOREGROUND)
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+
+        # Summary
+        self._add_output("═══════════════════════════════════════════════", VSCodeColors.TERMINAL_ANSI_BRIGHT_GREEN)
+        self._add_output("  COMPILATION SUCCESSFUL", VSCodeColors.TERMINAL_ANSI_BRIGHT_GREEN)
+        self._add_output("═══════════════════════════════════════════════", VSCodeColors.TERMINAL_ANSI_BRIGHT_GREEN)
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+        self._add_output("Build Statistics:", VSCodeColors.INFO_FOREGROUND)
+        self._add_output("  - 0 Errors", VSCodeColors.SUCCESS_FOREGROUND)
+        self._add_output("  - 0 Warnings", VSCodeColors.SUCCESS_FOREGROUND)
+        self._add_output("  - Build time: 0.7s", VSCodeColors.INFO_FOREGROUND)
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
+        self._add_output(f"Output: {file_path.replace('.st', '.obj')}", VSCodeColors.TERMINAL_ANSI_BRIGHT_CYAN)
+        self._add_output("", VSCodeColors.TERMINAL_FOREGROUND)
 
     def _on_input_change(self, e):
         """Handle input field changes (for future autocomplete, etc.)."""

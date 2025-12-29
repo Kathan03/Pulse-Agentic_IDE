@@ -3,7 +3,23 @@ VS Code Dark Modern Theme Colors
 
 Official VS Code Dark Modern theme color palette for Pulse IDE.
 Based on: https://github.com/microsoft/vscode/blob/main/extensions/theme-defaults/themes/dark_modern.json
+
+This file now integrates with the ThemeManager to support multiple themes.
 """
+
+# Import theme system
+try:
+    from src.ui.themes import ThemeManager, DARK_THEME
+    from src.core.settings import get_settings_manager
+
+    # Initialize theme manager with user's saved theme preference
+    _settings = get_settings_manager().load_settings()
+    _saved_theme = _settings.get("preferences", {}).get("theme", "dark")
+    _theme_manager = ThemeManager(initial_theme=_saved_theme)
+    _current_theme = _theme_manager.get_current_theme()
+except Exception as e:
+    print(f"[WARNING] Could not load theme system, using fallback dark theme: {e}")
+    _current_theme = None
 
 
 class VSCodeColors:
@@ -136,6 +152,23 @@ class VSCodeColors:
     WIDGET_SHADOW = "#00000033"
     WIDGET_BORDER = "#313131"
 
+    # Menu Colors
+    MENU_BACKGROUND = "#252526"
+    MENU_FOREGROUND = "#CCCCCC"
+    MENU_SELECTION_BACKGROUND = "#04395E"
+    MENU_SEPARATOR = "#454545"
+
+    # Title Bar Colors
+    TITLE_BAR_BACKGROUND = "#181818"
+    TITLE_BAR_FOREGROUND = "#CCCCCC"
+
+    # Link Colors
+    LINK_FOREGROUND = "#3794FF"
+    LINK_ACTIVE_FOREGROUND = "#3794FF"
+
+    # Description Colors
+    DESCRIPTION_FOREGROUND = "#9D9D9D"
+
     # Selection Colors
     SELECTION_BACKGROUND = "#264F78"
     SELECTION_FOREGROUND = "#FFFFFF"
@@ -196,7 +229,7 @@ def load_logo_base64():
     from pathlib import Path
 
     try:
-        logo_path = Path("Logo.png")
+        logo_path = Path("assets/pulse_logo_orange_25x25.svg")
         if logo_path.exists():
             with open(logo_path, 'rb') as f:
                 return base64.b64encode(f.read()).decode('utf-8')
@@ -301,3 +334,48 @@ def create_pulse_logo_canvas(width=230, height=140, stroke_color="#0078D4", stro
     )
 
     return logo_canvas
+
+
+# ============================================================================
+# THEME SYSTEM INTEGRATION
+# ============================================================================
+
+# Override VSCodeColors with current theme if theme system is available
+if _current_theme is not None:
+    print(f"[INFO] Applying theme: {_saved_theme}")
+    for attr_name in dir(_current_theme):
+        if not attr_name.startswith('_'):
+            setattr(VSCodeColors, attr_name, getattr(_current_theme, attr_name))
+
+
+def get_theme_manager():
+    """Get the global theme manager instance."""
+    return _theme_manager
+
+
+def reload_theme():
+    """
+    Reload theme from settings and update VSCodeColors.
+    Call this after changing theme in settings to apply immediately.
+    """
+    global _theme_manager, _current_theme
+    try:
+        settings = get_settings_manager().load_settings()
+        theme_name = settings.get("preferences", {}).get("theme", "dark")
+        print(f"[INFO] Reloading theme: {theme_name}")
+
+        _theme_manager.set_theme(theme_name)
+        _current_theme = _theme_manager.get_current_theme()
+
+        # Update VSCodeColors class with new theme
+        for attr_name in dir(_current_theme):
+            if not attr_name.startswith('_'):
+                setattr(VSCodeColors, attr_name, getattr(_current_theme, attr_name))
+
+        print(f"[INFO] Theme applied: {theme_name}")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to reload theme: {e}")
+        import traceback
+        traceback.print_exc()
+        return False

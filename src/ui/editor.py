@@ -8,6 +8,7 @@ import flet as ft
 from pathlib import Path
 from src.ui.theme import VSCodeColors, Fonts, Spacing, create_logo_image
 from src.ui.log_panel import LogPanel
+from src.ui.components.settings_page import SettingsPage
 
 
 class EditorManager:
@@ -21,7 +22,7 @@ class EditorManager:
     - Welcome screen when no tabs are open
     """
 
-    def __init__(self, log_panel=None, file_manager=None, dirty_callback=None):
+    def __init__(self, log_panel=None, file_manager=None, dirty_callback=None, query_handler=None):
         """
         Initialize the EditorManager.
 
@@ -29,9 +30,11 @@ class EditorManager:
             log_panel: Reference to the LogPanel template for creating Pulse Agent tabs
             file_manager: Reference to FileManager for secure file operations
             dirty_callback: Callback function (file_path, is_dirty) to notify sidebar of dirty state
+            query_handler: Callback function (user_input) to handle agent queries
         """
         self.log_panel_template = log_panel  # Template for creating new log panels
         self.file_manager = file_manager
+        self.query_handler = query_handler  # Handler for agent queries
         self.tabs_control = None
         self.welcome_screen = None
         self.open_files = {}  # Map of file_path -> tab_index
@@ -119,6 +122,126 @@ class EditorManager:
         """Get the editor manager control for adding to the page."""
         return self.container
 
+    def _handle_theme_change(self, theme_name: str):
+        """Handle instant theme change by reloading the page."""
+        print(f"[INFO] Theme changed to {theme_name}, triggering page reload...")
+        if self.container.page:
+            # Force page update to apply new theme colors
+            self.container.page.update()
+            print("[INFO] Page updated with new theme")
+
+    def open_settings_page(self):
+        """Open the Pulse Settings page as a new tab."""
+        print("[DEBUG] EditorManager.open_settings_page() called")
+
+        # Check if settings tab already exists
+        for idx, tab in enumerate(self.tabs_control.tabs):
+            # Check both old text format and new tab_content format
+            is_settings = False
+            if hasattr(tab, 'text') and tab.text and "Pulse Settings" in str(tab.text):
+                is_settings = True
+            elif hasattr(tab, 'tab_content') and tab.tab_content:
+                # Check if any control in tab_content contains "Pulse Settings"
+                if hasattr(tab.tab_content, 'controls'):
+                    is_settings = any(
+                        isinstance(c, ft.Text) and "Pulse Settings" in c.value
+                        for c in tab.tab_content.controls
+                    )
+
+            if is_settings:
+                # Settings tab already exists, switch to it
+                print(f"[DEBUG] Settings tab already exists at index {idx}, switching to it")
+                self.tabs_control.selected_index = idx
+
+                # Show tabs control and hide welcome screen
+                self.tabs_control.visible = True
+                if self.welcome_screen:
+                    self.welcome_screen.visible = False
+
+                # Update the entire container to ensure visibility
+                if self.tabs_control.page:
+                    self.container.update()
+                    print("[DEBUG] Container updated, settings tab should now be visible")
+                return
+
+        print("[DEBUG] Creating new settings page")
+        # Create new settings page
+        try:
+            # Pass theme change callback to enable instant theme updates
+            settings_page = SettingsPage(on_theme_change=self._handle_theme_change)
+            print("[DEBUG] SettingsPage created successfully")
+        except Exception as e:
+            print(f"[ERROR] Failed to create SettingsPage: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+
+        # Create close button for settings tab
+        def close_settings_tab(e):
+            # Find and close settings tab
+            for idx, tab in enumerate(self.tabs_control.tabs):
+                if hasattr(tab, 'tab_content') and any(
+                    isinstance(c, ft.Text) and "Pulse Settings" in c.value
+                    for c in (tab.tab_content.controls if hasattr(tab.tab_content, 'controls') else [])
+                ):
+                    self.tabs_control.tabs.pop(idx)
+                    # Switch to previous tab or Pulse Chat
+                    if self.tabs_control.tabs:
+                        self.tabs_control.selected_index = max(0, idx - 1)
+                    if self.tabs_control.page:
+                        self.container.update()
+                    return
+
+        close_button = ft.IconButton(
+            icon=ft.Icons.CLOSE,
+            icon_size=14,
+            tooltip="Close settings",
+            on_click=close_settings_tab,
+            icon_color=VSCodeColors.TAB_INACTIVE_FOREGROUND,
+            style=ft.ButtonStyle(
+                bgcolor={
+                    ft.ControlState.HOVERED: VSCodeColors.BUTTON_SECONDARY_HOVER,
+                    ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT,
+                },
+                overlay_color=VSCodeColors.ERROR_FOREGROUND,
+                padding=ft.padding.all(2),
+            ),
+        )
+
+        # Create tab label with close button
+        tab_label = ft.Row(
+            controls=[
+                ft.Icon(ft.Icons.SETTINGS, size=16),
+                ft.Text("Pulse Settings", size=13),
+                close_button,
+            ],
+            spacing=4,
+            alignment=ft.MainAxisAlignment.START,
+        )
+
+        # Create tab with custom label and close button
+        new_tab = ft.Tab(
+            tab_content=tab_label,  # Custom label with close button
+            content=settings_page.get_control(),
+        )
+
+        # Add tab
+        self.tabs_control.tabs.append(new_tab)
+        self.tabs_control.selected_index = len(self.tabs_control.tabs) - 1
+        print(f"[DEBUG] Settings tab added at index {self.tabs_control.selected_index}")
+
+        # Show tabs control and hide welcome screen
+        self.tabs_control.visible = True
+        if self.welcome_screen:
+            self.welcome_screen.visible = False
+
+        # Update UI
+        if self.tabs_control.page:
+            self.container.update()
+            print("[DEBUG] UI updated successfully")
+        else:
+            print("[WARNING] tabs_control.page is None, cannot update")
+
     def open_agent(self, mode="Agent Mode"):
         """
         Open a new Pulse Agent tab (supports multiple sessions).
@@ -132,17 +255,17 @@ class EditorManager:
         # Create a new log panel instance for this session
         def handle_user_input(text: str):
             """Handle user input from this agent session."""
-            # TODO: Wire this to agent orchestration engine
-            new_log_panel.add_log(f"User: {text}", "info")
-            new_log_panel.add_log(f"Agent (Session #{self.agent_session_counter}) processing in {mode}...", "agent")
+            print(f"[DEBUG] Agent tab handler called with: {text}")
+            # Call the actual query handler from app.py, passing the mounted LogPanel
+            # (LogPanel already added user message in _handle_submit)
+            if self.query_handler:
+                print(f"[DEBUG] Calling query_handler from agent tab with new_log_panel")
+                self.query_handler(text, new_log_panel)  # ✅ Pass the mounted tab's LogPanel
+            else:
+                print(f"[ERROR] No query_handler registered in EditorManager")
+                new_log_panel.add_log("❌ Query handler not configured", "error")
 
         new_log_panel = LogPanel(on_submit=handle_user_input)
-
-        # Initialize with welcome messages
-        new_log_panel.add_log("Welcome to Pulse IDE - AI-Powered PLC Development", "success")
-        new_log_panel.add_log(f"Current Mode: {mode}", "info")
-        new_log_panel.add_log(f"Session #{self.agent_session_counter}", "info")
-        new_log_panel.add_log("Enter a requirement or question to get started", "info")
 
         # Create new agent tab with session number
         session_label = f" (Session {self.agent_session_counter})" if self.agent_session_counter > 1 else ""
@@ -162,7 +285,7 @@ class EditorManager:
 
         close_button = ft.IconButton(
             icon=ft.Icons.CLOSE,
-            icon_size=18,
+            icon_size=14,
             tooltip="Close tab",
             on_click=close_this_agent_tab,
             icon_color=VSCodeColors.TAB_INACTIVE_FOREGROUND,
@@ -172,30 +295,31 @@ class EditorManager:
                     ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT,
                 },
                 overlay_color=VSCodeColors.ERROR_FOREGROUND,
+                padding=ft.padding.all(2),
             ),
         )
 
-        # Create tab content with close button
-        tab_content = ft.Stack(
+        # Create custom tab label with title and close button next to it
+        tab_label = ft.Row(
             controls=[
-                ft.Container(
-                    content=new_log_panel.get_control(),
-                    expand=True,
-                    bgcolor=VSCodeColors.EDITOR_BACKGROUND,
-                    padding=Spacing.PADDING_MEDIUM,
-                ),
-                ft.Container(
-                    content=close_button,
-                    right=10,
-                    top=10,
-                ),
+                ft.Icon(name=tab_logo, size=16),
+                ft.Text(tab_title, size=13),
+                close_button,
             ],
+            spacing=4,
+            alignment=ft.MainAxisAlignment.START,
+        )
+
+        # Create tab content without close button (it's now in the tab label)
+        tab_content = ft.Container(
+            content=new_log_panel.get_control(),
             expand=True,
+            bgcolor=VSCodeColors.EDITOR_BACKGROUND,
+            padding=Spacing.PADDING_MEDIUM,
         )
 
         agent_tab = ft.Tab(
-            text=tab_title,
-            icon=tab_logo,
+            tab_content=tab_label,  # Custom label with close button
             content=tab_content,
         )
 
@@ -298,11 +422,15 @@ class EditorManager:
         # Use the file_path to find and close the tab dynamically
         def close_this_file_tab(e):
             # Close by file path ensures we close the correct tab
+            if e.control.page:
+                e.control.page.overlay.clear()  # Clear any overlays
             self.close_file(file_path)
+            if e.control.page:
+                e.control.page.update()
 
         close_button = ft.IconButton(
             icon=ft.Icons.CLOSE,
-            icon_size=18,
+            icon_size=14,
             tooltip="Close file",
             on_click=close_this_file_tab,
             icon_color=VSCodeColors.TAB_INACTIVE_FOREGROUND,
@@ -312,31 +440,32 @@ class EditorManager:
                     ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT,
                 },
                 overlay_color=VSCodeColors.ERROR_FOREGROUND,
+                padding=ft.padding.all(2),
             ),
         )
 
-        # Create tab content with close button
-        tab_content = ft.Stack(
+        # Create custom tab label with filename and close button next to it
+        tab_label = ft.Row(
             controls=[
-                ft.Container(
-                    content=editor,
-                    expand=True,
-                    padding=Spacing.PADDING_MEDIUM,
-                    bgcolor=VSCodeColors.EDITOR_BACKGROUND,
-                ),
-                ft.Container(
-                    content=close_button,
-                    right=10,
-                    top=10,
-                ),
+                ft.Icon(name=icon, size=16),
+                ft.Text(filename, size=13),
+                close_button,
             ],
-            expand=True,
+            spacing=4,
+            alignment=ft.MainAxisAlignment.START,
         )
 
-        # Create the tab with proper content
+        # Create tab content without close button (it's now in the tab label)
+        tab_content = ft.Container(
+            content=editor,
+            expand=True,
+            padding=Spacing.PADDING_MEDIUM,
+            bgcolor=VSCodeColors.EDITOR_BACKGROUND,
+        )
+
+        # Create the tab with custom label
         new_tab = ft.Tab(
-            text=filename,
-            icon=icon,
+            tab_content=tab_label,  # Custom label with close button
             content=tab_content,
         )
 
@@ -502,34 +631,62 @@ class EditorManager:
         Args:
             tab_index: Index of the tab to close
         """
+        # Validate tab index
+        if tab_index < 0 or tab_index >= len(self.tabs_control.tabs):
+            print(f"[WARNING] Invalid tab index: {tab_index}")
+            return
+
         # Check if this is an agent tab
         if tab_index in self.agent_tabs:
-            # Remove agent tab
+            print(f"[DEBUG] Closing agent tab at index {tab_index}")
+
+            # Step 1: Remove the tab from UI
             del self.tabs_control.tabs[tab_index]
-            del self.agent_tabs[tab_index]
 
-            # Update all indices that come after this tab
-            files_to_update = [(fp, idx) for fp, idx in self.open_files.items() if idx > tab_index]
-            for fp, idx in files_to_update:
-                self.open_files[fp] = idx - 1
+            # Step 2: Create new dictionaries with updated indices
+            # This prevents issues with concurrent modifications
+            new_agent_tabs = {}
+            new_tab_editors = {}
+            new_open_files = {}
 
-            editors_to_update = [(idx, editor) for idx, editor in self.tab_editors.items() if idx > tab_index]
-            for idx, editor in editors_to_update:
-                del self.tab_editors[idx]
-                self.tab_editors[idx - 1] = editor
+            # Update agent_tabs: remove current, shift down indices after it
+            for idx, log_panel in self.agent_tabs.items():
+                if idx < tab_index:
+                    new_agent_tabs[idx] = log_panel
+                elif idx > tab_index:
+                    new_agent_tabs[idx - 1] = log_panel
+                # Skip idx == tab_index (it's being deleted)
 
-            agent_tabs_to_update = [(idx, log_panel) for idx, log_panel in self.agent_tabs.items() if idx > tab_index]
-            for idx, log_panel in agent_tabs_to_update:
-                del self.agent_tabs[idx]
-                self.agent_tabs[idx - 1] = log_panel
+            # Update tab_editors: shift down indices after deleted tab
+            for idx, editor in self.tab_editors.items():
+                if idx < tab_index:
+                    new_tab_editors[idx] = editor
+                elif idx > tab_index:
+                    new_tab_editors[idx - 1] = editor
 
-            # Update visibility and UI
+            # Update open_files: shift down indices after deleted tab
+            for fp, idx in self.open_files.items():
+                if idx < tab_index:
+                    new_open_files[fp] = idx
+                elif idx > tab_index:
+                    new_open_files[fp] = idx - 1
+                # Skip idx == tab_index if it exists
+
+            # Replace the dictionaries
+            self.agent_tabs = new_agent_tabs
+            self.tab_editors = new_tab_editors
+            self.open_files = new_open_files
+
+            # Update selected index if needed
             if self.tabs_control.selected_index >= len(self.tabs_control.tabs):
                 self.tabs_control.selected_index = max(0, len(self.tabs_control.tabs) - 1)
 
+            # Update visibility and UI
             self._update_visibility()
             if self.tabs_control.page:
                 self.tabs_control.update()
+
+            print(f"[DEBUG] Agent tab closed. Remaining tabs: {len(self.tabs_control.tabs)}")
             return
 
         # Find the file path for this tab index
@@ -680,3 +837,79 @@ class EditorManager:
         }
 
         return icon_map.get(extension.lower(), ft.Icons.INSERT_DRIVE_FILE)
+
+    def update_chat_log(self, message: str, log_type: str = "agent"):
+        """
+        Update the chat log in the currently active agent tab.
+        Used by background threads to stream agent responses to the UI.
+
+        Args:
+            message: Message to display in the chat
+            log_type: Type of log entry ("info", "success", "warning", "error", "agent")
+        """
+        current_index = self.tabs_control.selected_index
+
+        # Check if current tab is an agent tab
+        if current_index in self.agent_tabs:
+            agent_log_panel = self.agent_tabs[current_index]
+            agent_log_panel.add_log(message, log_type)
+        else:
+            # If not on an agent tab, try to find the most recent agent tab
+            if self.agent_tabs:
+                most_recent_agent_index = min(self.agent_tabs.keys())
+                agent_log_panel = self.agent_tabs[most_recent_agent_index]
+                agent_log_panel.add_log(message, log_type)
+
+    def update_chat_stream(self, message: str):
+        """
+        Stream a message to the chat interface.
+        Alias for update_chat_log with default "agent" type.
+
+        Args:
+            message: Message to stream to the chat
+        """
+        self.update_chat_log(message, "agent")
+
+    def reload_tabs(self):
+        """
+        Reload all open file tabs from disk.
+        Used after agents modify files to show the updated content.
+        Preserves dirty state for files with unsaved user changes.
+        """
+        for file_path, tab_index in list(self.open_files.items()):
+            # Skip if tab doesn't have an editor (shouldn't happen, but defensive)
+            if tab_index not in self.tab_editors:
+                continue
+
+            editor = self.tab_editors[tab_index]
+            normalized_path = str(Path(file_path).resolve())
+
+            try:
+                # Re-read file content from disk
+                if self.file_manager:
+                    new_content = self.file_manager.read_file(file_path)
+                else:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        new_content = f.read()
+
+                # Check if file has unsaved user changes
+                if normalized_path in self.dirty_files:
+                    # File has unsaved changes - ask user if they want to reload
+                    # For now, skip reloading files with unsaved changes
+                    print(f"Skipping reload of {file_path} - has unsaved changes")
+                    continue
+
+                # Update editor content
+                editor.value = new_content
+
+                # Update original content for dirty tracking
+                self.original_contents[normalized_path] = new_content
+
+                # Update UI if page is available
+                if editor.page:
+                    editor.update()
+
+                print(f"Reloaded: {file_path}")
+
+            except Exception as e:
+                print(f"Error reloading file {file_path}: {e}")

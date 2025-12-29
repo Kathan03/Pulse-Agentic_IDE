@@ -22,3 +22,8 @@ __pycache__/
 .python-version
 .idea/
 .vscode/
+
+.pytest_cache/
+.pulse/
+.claude/
+data/
