@@ -8,7 +8,7 @@ A dedicated settings page that opens as a tab in the editor with:
 """
 
 import flet as ft
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict, Any
 from src.ui.theme import VSCodeColors, Fonts, Spacing
 from src.core.settings import get_settings_manager
 
