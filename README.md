@@ -1,4 +1,4 @@
-<table border="0" style="border: none !important; border-collapse: collapse;">
+<table style="border: none !important; border-collapse: collapse;">
   <tr style="border: none !important;">
     <td style="border: none !important; padding-right: 20px; vertical-align: middle;">
       <span style="font-size: 32px; font-weight: bold;">Pulse Agentic IDE</span>
