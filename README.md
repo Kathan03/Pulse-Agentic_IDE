@@ -1,4 +1,4 @@
-# Pulse Agentic IDE <img src="assets/fox_pixel_25x25.svg" alt="Pulse Mascot" width="40" />
+# Pulse Agentic IDE <img src="assets/fox_pixel_25x25.svg" alt="Pulse Mascot" width="90" />
 
 <div align="center">
   <img src="assets/pulse_icon_bg_062024_256.png" alt="Pulse Logo" width="200" />
