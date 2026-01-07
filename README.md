@@ -1,4 +1,7 @@
-# Pulse Agentic IDE <img src="assets/fox_pixel_25x25.svg" alt="Pulse Mascot" width="90" />
+<div align="left" style="display: flex; align-items: center; gap: 15px;">
+  <h1 style="margin: 0; border: none;">Pulse Agentic IDE</h1>
+  <img src="assets/fox_pixel_25x25.svg" alt="Pulse Mascot" width="90" />
+</div>
 
 <div align="center">
   <img src="assets/pulse_icon_bg_062024_256.png" alt="Pulse Logo" width="200" />
@@ -70,20 +73,20 @@ Pulse is an engineering showcase leveraging the absolute bleeding edge of AI fra
 
 ```mermaid
 graph TD
-    User[User / Developer] -->|Chat & Commands| UI[Pulse UI (Flet)]
-    UI -->|Events| Master[Master Graph (LangGraph)]
+    User["User / Developer"] -->|Chat & Commands| UI["Pulse UI (Flet)"]
+    UI -->|Events| Master["Master Graph (LangGraph)"]
     
     subgraph "Agent Core"
-        Master -->|Routing| Tools[Tool Registry]
-        Master -->|Delegation| Crew[CrewAI Builder]
-        Master -->|Delegation| AutoGen[AutoGen Auditor]
+        Master -->|Routing| Tools["Tool Registry"]
+        Master -->|Delegation| Crew["CrewAI Builder"]
+        Master -->|Delegation| AutoGen["AutoGen Auditor"]
     end
     
     subgraph "Tool Layer"
-        Tools -->|Read/Write| FS[File System]
-        Tools -->|Exec| Cmd[Terminal]
-        Tools -->|Query| Web[Web Search]
-        Tools -->|Index| RAG[ChromaDB]
+        Tools -->|Read/Write| FS["File System"]
+        Tools -->|Exec| Cmd["Terminal"]
+        Tools -->|Query| Web["Web Search"]
+        Tools -->|Index| RAG["ChromaDB"]
     end
     
     Crew --> Tools
