@@ -1,7 +1,13 @@
-<div align="left" style="display: flex; align-items: center; gap: 15px; white-space: nowrap;">
-  <h1 style="margin: 0; border: none;">Pulse Agentic IDE</h1>
-  <img src="assets/fox_pixel_25x25.svg" alt="Pulse Mascot" width="125" />
-</div>
+<table border="0" style="border: none !important; border-collapse: collapse;">
+  <tr style="border: none !important;">
+    <td style="border: none !important; padding-right: 20px; vertical-align: middle;">
+      <span style="font-size: 32px; font-weight: bold;">Pulse Agentic IDE</span>
+    </td>
+    <td style="border: none !important; vertical-align: middle;">
+      <img src="assets/fox_pixel_25x25.svg" alt="Pulse Mascot" width="125" />
+    </td>
+  </tr>
+</table>
 
 <div align="center">
   <img src="assets/pulse_icon_bg_062024_256.png" alt="Pulse Logo" width="200" />
