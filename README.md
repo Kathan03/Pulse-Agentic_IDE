@@ -1,7 +1,13 @@
-<div align="left" style="display: flex; align-items: center; gap: 15px;">
-  <h1 style="margin: 0; border: none;">Pulse Agentic IDE</h1>
-  <img src="assets/fox_pixel_25x25.svg" alt="Pulse Mascot" width="90" />
-</div>
+<table border="0">
+  <tr>
+    <td valign="middle">
+      <h1 style="margin: 0; border: none;">Pulse Agentic IDE</h1>
+    </td>
+    <td valign="middle">
+      <img src="assets/fox_pixel_25x25.svg" alt="Pulse Mascot" width="90" />
+    </td>
+  </tr>
+</table>
 
 <div align="center">
   <img src="assets/pulse_icon_bg_062024_256.png" alt="Pulse Logo" width="200" />
@@ -41,10 +47,11 @@ Pulse doesn't just "guess." It proposes changes using **Patch Previews**. You re
 *   **Sandboxed Execution**: Agents operate within strict bounds, protecting your system files.
 
 ### 🤖 **Multi-Agent Architecture**
-Pulse orchestrates specialized agents for different tasks:
-*   **Master Agent (LangGraph)**: The central brain that routes queries.
-*   **Builder Crew (CrewAI)**: A team of Planner, Coder, and Reviewer agents for complex feature implementation.
-*   **Auditor Swarm (AutoGen)**: A debating squad that analyzes code quality and security.
+### 🤖 **Multi-Agent Architecture**
+Pulse uses a **Unified Master Loop** (Hub-and-Spoke) to orchestrate specialized capabilities:
+*   **Master Agent (LangGraph)**: The central brain that routes queries and executes tools.
+*   **Builder Crew (CrewAI)**: Invoked as a **tool** for complex feature implementation (Planner, Coder, Reviewer).
+*   **Auditor Swarm (AutoGen)**: Invoked as a **tool** for independent code quality and security analysis.
 
 ### 🏭 **PLC & Industrial Automation Support**
 Specialized capabilities for generating and checking **Structured Text (IEC 61131-3)** code, making it the first AI IDE tailored for OT/ICS engineers.
@@ -74,23 +81,18 @@ Pulse is an engineering showcase leveraging the absolute bleeding edge of AI fra
 ```mermaid
 graph TD
     User["User / Developer"] -->|Chat & Commands| UI["Pulse UI (Flet)"]
-    UI -->|Events| Master["Master Graph (LangGraph)"]
-    
-    subgraph "Agent Core"
-        Master -->|Routing| Tools["Tool Registry"]
-        Master -->|Delegation| Crew["CrewAI Builder"]
-        Master -->|Delegation| AutoGen["AutoGen Auditor"]
+    UI -->|Events| Master["Master Agent (LangGraph)"]
+
+    subgraph "Unified Master Loop"
+        Master -->|Request Tool| Exec["Tool Execution Node"]
+        Exec -->|Tool Result| Master
     end
-    
-    subgraph "Tool Layer"
-        Tools -->|Read/Write| FS["File System"]
-        Tools -->|Exec| Cmd["Terminal"]
-        Tools -->|Query| Web["Web Search"]
-        Tools -->|Index| RAG["ChromaDB"]
+
+    subgraph "Tool Registry"
+        Exec -->|Invoke| Tools["Standard Tools"]
+        Exec -->|Invoke| Crew["CrewAI Sub-agents"]
+        Exec -->|Invoke| AutoGen["AutoGen Auditors"]
     end
-    
-    Crew --> Tools
-    AutoGen --> FS
 ```
 
 ---
