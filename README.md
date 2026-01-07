@@ -37,8 +37,7 @@ Pulse doesn't just "guess." It proposes changes using **Patch Previews**. You re
 *   **Terminal Guardrails**: Every shell command is analyzed for risk (Low/Med/High). Dangerous commands require explicit approval.
 *   **Sandboxed Execution**: Agents operate within strict bounds, protecting your system files.
 
-### 🤖 **Multi-Agent Architecture**
-### 🤖 **Multi-Agent Architecture**
+### 🤖 **Agent Architecture**
 Pulse uses a **Unified Master Loop** (Hub-and-Spoke) to orchestrate specialized capabilities:
 *   **Master Agent (LangGraph)**: The central brain that routes queries and executes tools.
 *   **Builder Crew (CrewAI)**: Invoked as a **tool** for complex feature implementation (Planner, Coder, Reviewer).
