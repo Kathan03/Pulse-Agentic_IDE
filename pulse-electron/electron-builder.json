@@ -1,0 +1,44 @@
+{
+  "appId": "com.pulse.ide",
+  "productName": "Pulse IDE",
+  "directories": {
+    "buildResources": "build",
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "../backend-dist",
+      "to": "backend",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "../assets",
+      "to": "assets",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "../assets/pulse_icon_bg_020321.ico",
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  },
+  "extraMetadata": {
+    "main": "dist-electron/main.js"
+  }
+}

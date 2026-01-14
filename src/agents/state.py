@@ -226,6 +226,18 @@ class MasterState(TypedDict):
     this flag and abort cleanly if True.
     """
 
+    mode: str
+    """
+    Agent operation mode.
+
+    Values:
+    - "agent": Full tool access, can modify files and run commands.
+    - "ask": Read-only mode, can search/explore but not modify.
+    - "plan": Planning mode, no execution, generates implementation plans.
+
+    Determines which tools are available and system prompt to use.
+    """
+
     # ========================================================================
     # Tool Execution Results
     # ========================================================================
@@ -346,7 +358,8 @@ class MasterState(TypedDict):
 def create_initial_master_state(
     user_input: str,
     project_root: str,
-    settings_snapshot: Dict[str, Any]
+    settings_snapshot: Dict[str, Any],
+    mode: str = "agent"
 ) -> MasterState:
     """
     Create initial MasterState for a new agent run.
@@ -355,6 +368,7 @@ def create_initial_master_state(
         user_input: User's request or question.
         project_root: Absolute path to workspace root.
         settings_snapshot: Settings snapshot from SettingsManager.
+        mode: Agent mode - "agent", "ask", or "plan" (default: "agent").
 
     Returns:
         MasterState: Initial state with default values.
@@ -377,6 +391,7 @@ def create_initial_master_state(
         current_status="Wondering",
         pending_interrupt=None,
         is_cancelled=False,
+        mode=mode,
 
         # Tool execution
         tool_result=None,

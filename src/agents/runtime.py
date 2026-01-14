@@ -36,6 +36,7 @@ from src.core.events import (
     emit_run_started,
     emit_run_completed,
     emit_run_cancelled,
+    emit_status,
     get_event_bus,
 )
 from src.core.db import (
@@ -170,7 +171,8 @@ async def run_agent(
     project_root: str,
     max_iterations: int = 10,
     config: Optional[Dict[str, Any]] = None,
-    conversation_id: Optional[str] = None
+    conversation_id: Optional[str] = None,
+    mode: str = "agent"
 ) -> Dict[str, Any]:
     """
     Run the Master Agent for a single user request.
@@ -190,6 +192,7 @@ async def run_agent(
         max_iterations: Maximum graph iterations to prevent infinite loops (default: 10).
         config: Optional runtime config overrides (for testing).
         conversation_id: Optional conversation ID to resume (creates new if not provided).
+        mode: Agent mode - "agent" (full tools), "ask" (read-only), or "plan" (planning).
 
     Returns:
         Dict with run results:
@@ -235,6 +238,13 @@ async def run_agent(
 
         logger.info(f"Starting run {run_id}")
         await emit_run_started(run_id)
+        
+        # Emit early status so frontend knows we're alive
+        await emit_status("Starting")
+        
+        # Debug: Log EventBus subscriber count
+        event_bus = get_event_bus()
+        logger.info(f"EventBus has {len(event_bus._queues)} subscriber(s)")
 
     try:
         # ====================================================================
@@ -290,7 +300,8 @@ async def run_agent(
         initial_state = create_initial_master_state(
             user_input=user_input,
             project_root=str(project_root_path),
-            settings_snapshot=settings_snapshot
+            settings_snapshot=settings_snapshot,
+            mode=mode
         )
 
         logger.info("Initial MasterState created")

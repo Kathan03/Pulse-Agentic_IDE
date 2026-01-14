@@ -29,7 +29,17 @@ Symptoms: Black bars on sides, missing line numbers, content overlapping/renderi
 Action: The React layout is likely using incorrect CSS height/width constraints. Implement a proper Flexbox/Grid container for the MonacoEditor component. Ensure automaticLayout={true} is set and the parent container has explicit dimensions.
 Issue 3: Functional Terminal Integration
 
-Symptoms: Terminal is dead/static.
+Symptoms: Terminal is dead/static. Also getting error: 
+Failed to resolve import "@xterm/addon-web-links" from "src/components/terminal/TerminalPanel.tsx". Does the file exist?
+C:/Users/katha/OneDrive - The Pennsylvania State University/Documents/Projects/Pulse/pulse-electron/src/components/terminal/TerminalPanel.tsx:11:30
+19 |  import { Terminal } from "@xterm/xterm";
+20 |  import { FitAddon } from "@xterm/addon-fit";
+21 |  import { WebLinksAddon } from "@xterm/addon-web-links";
+   |                                 ^
+22 |  import "@xterm/xterm/css/xterm.css";
+23 |  import { useUIStore } from "@/stores/uiStore";
+
+
 Action: The Flet app used a Python-side terminal. For Electron, we need a native solution. Implement xterm.js in the React frontend and node-pty in the Electron Main process to spawn a real interactive shell (PowerShell/Bash) that pipes data to the UI.
 Issue 4: File Explorer Capabilities
 

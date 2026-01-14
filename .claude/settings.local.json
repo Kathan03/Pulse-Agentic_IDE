@@ -60,7 +60,14 @@
       "Bash(\"venv/Scripts/python.exe\" -m py_compile src/ui/components/approval.py)",
       "Bash(\"venv/Scripts/python.exe\" -m py_compile src/core/db.py)",
       "Bash(\"venv/Scripts/python.exe\" -c \"from src.agents.runtime import run_agent, get_current_conversation_id, get_conversation_db, save_message_to_conversation; print\\(''runtime.py imports OK''\\)\")",
-      "Bash(\"venv/Scripts/python.exe\" -c \"import sys; sys.path.insert\\(0, ''.''\\); exec\\(open\\(''src/agents/state.py''\\).read\\(\\)\\); t = ToolOutput\\(tool_name=''test'', success=True, result={}, timestamp=''now''\\); print\\(f''Default summary: \"\"{t.summary}\"\"''\\); print\\(f''Default next_steps: {t.next_steps}''\\)\")"
+      "Bash(\"venv/Scripts/python.exe\" -c \"import sys; sys.path.insert\\(0, ''.''\\); exec\\(open\\(''src/agents/state.py''\\).read\\(\\)\\); t = ToolOutput\\(tool_name=''test'', success=True, result={}, timestamp=''now''\\); print\\(f''Default summary: \"\"{t.summary}\"\"''\\); print\\(f''Default next_steps: {t.next_steps}''\\)\")",
+      "Bash(if not exist \"src\\\\server\\\\routes\" mkdir \"src\\\\server\\\\routes\")",
+      "Bash(powershell.exe:*)",
+      "Bash(cd:*)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
