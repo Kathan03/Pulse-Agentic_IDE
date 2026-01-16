@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useTheme, themes, ThemeIcon, type ThemeName } from '@/contexts/ThemeContext';
+import { useTheme, themes, ThemeIcon } from '@/contexts/ThemeContext';
 import {
   fetchSettings,
   fetchAPIKeyStatus,
@@ -23,7 +23,7 @@ import {
 } from '@/services/settingsApi';
 
 export function SettingsTab() {
-  const [activeSection, setActiveSection] = useState<'apikeys' | 'appearance' | 'editor' | 'agent'>('apikeys');
+  const [activeSection, setActiveSection] = useState<'apikeys' | 'appearance' | 'editor' | 'agent' | 'usage'>('apikeys');
 
   return (
     <div className="h-full flex flex-col bg-pulse-bg overflow-hidden">
@@ -41,6 +41,12 @@ export function SettingsTab() {
             onClick={() => setActiveSection('apikeys')}
           >
             API Keys
+          </SectionButton>
+          <SectionButton
+            active={activeSection === 'usage'}
+            onClick={() => setActiveSection('usage')}
+          >
+            Usage
           </SectionButton>
           <SectionButton
             active={activeSection === 'appearance'}
@@ -65,6 +71,7 @@ export function SettingsTab() {
         {/* Settings Content */}
         <div className="flex-1 overflow-auto p-6">
           {activeSection === 'apikeys' && <APIKeysSettings />}
+          {activeSection === 'usage' && <UsageSettings />}
           {activeSection === 'appearance' && <AppearanceSettings />}
           {activeSection === 'editor' && <EditorSettings />}
           {activeSection === 'agent' && <AgentSettings />}
@@ -287,30 +294,279 @@ function APIKeysSettings() {
           </p>
         </div>
       </SettingsSection>
+    </div>
+  );
+}
 
-      {/* Token Usage Statistics */}
-      <SettingsSection title="Session Token Usage">
-        <div className="grid grid-cols-3 gap-4 mb-4">
+// ============================================================================
+// Usage Settings - API Usage Statistics
+// ============================================================================
+
+function UsageSettings() {
+  const [usageStats, setUsageStats] = useState<{
+    total_calls: number;
+    total_tokens: number;
+    total_prompt_tokens: number;
+    total_completion_tokens: number;
+    total_cost_usd: number;
+    by_model: Array<{
+      model: string;
+      tokens: number;
+      prompt_tokens: number;
+      completion_tokens: number;
+      cost_usd: number;
+      call_count: number;
+    }>;
+  } | null>(null);
+
+  const [toolStats, setToolStats] = useState<{
+    total_calls: number;
+    total_successes: number;
+    total_failures: number;
+    overall_success_rate: number;
+    by_tool: Record<string, {
+      calls: number;
+      successes: number;
+      failures: number;
+      success_rate: number;
+      avg_duration_ms: number;
+    }>;
+    slow_tools: string[];
+    failing_tools: string[];
+  } | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [resettingUsage, setResettingUsage] = useState(false);
+  const [resettingTools, setResettingTools] = useState(false);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const { fetchUsageStatistics, fetchToolAnalytics } = await import('@/services/settingsApi');
+      const [usage, tools] = await Promise.all([
+        fetchUsageStatistics(),
+        fetchToolAnalytics()
+      ]);
+      setUsageStats(usage);
+      setToolStats(tools);
+    } catch (error) {
+      console.error('Failed to fetch usage stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Initial fetch and polling every 5 seconds
+  useEffect(() => {
+    fetchStats();
+    const interval = setInterval(fetchStats, 5000);
+    return () => clearInterval(interval);
+  }, [fetchStats]);
+
+  const handleResetUsage = async () => {
+    setResettingUsage(true);
+    try {
+      const { resetUsageStatistics } = await import('@/services/settingsApi');
+      await resetUsageStatistics();
+      await fetchStats();
+    } catch (error) {
+      console.error('Failed to reset usage stats:', error);
+    } finally {
+      setResettingUsage(false);
+    }
+  };
+
+  const handleResetTools = async () => {
+    setResettingTools(true);
+    try {
+      const { resetToolAnalytics } = await import('@/services/settingsApi');
+      await resetToolAnalytics();
+      await fetchStats();
+    } catch (error) {
+      console.error('Failed to reset tool analytics:', error);
+    } finally {
+      setResettingTools(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <SettingsSection title="API Usage Statistics">
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin w-6 h-6 border-2 border-pulse-primary border-t-transparent rounded-full" />
+          </div>
+        </SettingsSection>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* API Usage Statistics */}
+      <SettingsSection title="API Usage Statistics">
+        <div className="flex justify-between items-start mb-4">
+          <p className="text-sm text-pulse-fg-muted">
+            Track your API token usage and estimated costs.
+          </p>
+          <button
+            onClick={handleResetUsage}
+            disabled={resettingUsage}
+            className="px-3 py-1 text-xs bg-pulse-bg-tertiary hover:bg-pulse-input rounded transition-colors disabled:opacity-50"
+          >
+            {resettingUsage ? 'Resetting...' : 'Reset'}
+          </button>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div className="bg-pulse-bg-secondary p-4 rounded-lg text-center">
-            <div className="text-2xl font-bold text-pulse-primary">0</div>
-            <div className="text-xs text-pulse-fg-muted mt-1">API Calls</div>
+            <div className="text-2xl font-bold text-pulse-primary">
+              {usageStats?.total_calls ?? 0}
+            </div>
+            <div className="text-xs text-pulse-fg-muted mt-1">Total API Calls</div>
           </div>
           <div className="bg-pulse-bg-secondary p-4 rounded-lg text-center">
-            <div className="text-2xl font-bold text-pulse-fg">0</div>
+            <div className="text-2xl font-bold text-pulse-fg">
+              {(usageStats?.total_tokens ?? 0).toLocaleString()}
+            </div>
             <div className="text-xs text-pulse-fg-muted mt-1">Total Tokens</div>
           </div>
           <div className="bg-pulse-bg-secondary p-4 rounded-lg text-center">
-            <div className="text-2xl font-bold text-pulse-success">$0.00</div>
-            <div className="text-xs text-pulse-fg-muted mt-1">Est. Cost</div>
+            <div className="text-2xl font-bold text-pulse-success">
+              ${(usageStats?.total_cost_usd ?? 0).toFixed(4)}
+            </div>
+            <div className="text-xs text-pulse-fg-muted mt-1">Est. Total Cost</div>
           </div>
         </div>
-        <p className="text-xs text-pulse-fg-muted">
-          Token usage resets when you restart the application. Cost estimates are approximate.
+
+        {/* Model Breakdown */}
+        {usageStats && usageStats.by_model.length > 0 && (
+          <>
+            <h3 className="text-sm font-medium text-pulse-fg mb-3">Usage by Model</h3>
+            <div className="space-y-2">
+              {usageStats.by_model.map((model) => (
+                <ModelUsageRow key={model.model} {...model} />
+              ))}
+            </div>
+          </>
+        )}
+
+        <p className="text-xs text-pulse-fg-muted mt-4">
+          Usage statistics are session-based and reset when the application restarts.
+        </p>
+      </SettingsSection>
+
+      {/* Tool Usage Analytics */}
+      <SettingsSection title="Tool Usage Analytics">
+        <div className="flex justify-between items-start mb-4">
+          <p className="text-sm text-pulse-fg-muted">
+            Track tool execution success rates and performance.
+          </p>
+          <button
+            onClick={handleResetTools}
+            disabled={resettingTools}
+            className="px-3 py-1 text-xs bg-pulse-bg-tertiary hover:bg-pulse-input rounded transition-colors disabled:opacity-50"
+          >
+            {resettingTools ? 'Resetting...' : 'Reset'}
+          </button>
+        </div>
+
+        {/* Tool Summary */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="bg-pulse-bg-secondary p-4 rounded-lg text-center">
+            <div className="text-2xl font-bold text-pulse-primary">
+              {toolStats?.total_calls ?? 0}
+            </div>
+            <div className="text-xs text-pulse-fg-muted mt-1">Total Tool Calls</div>
+          </div>
+          <div className="bg-pulse-bg-secondary p-4 rounded-lg text-center">
+            <div className="text-2xl font-bold text-pulse-success">
+              {toolStats?.total_successes ?? 0}
+            </div>
+            <div className="text-xs text-pulse-fg-muted mt-1">Successful</div>
+          </div>
+          <div className="bg-pulse-bg-secondary p-4 rounded-lg text-center">
+            <div className={`text-2xl font-bold ${(toolStats?.total_failures ?? 0) > 0 ? 'text-pulse-error' : 'text-pulse-fg'}`}>
+              {toolStats?.total_failures ?? 0}
+            </div>
+            <div className="text-xs text-pulse-fg-muted mt-1">Failed</div>
+          </div>
+        </div>
+
+        {/* Tool Breakdown */}
+        {toolStats && Object.keys(toolStats.by_tool).length > 0 && (
+          <>
+            <h3 className="text-sm font-medium text-pulse-fg mb-3">Tool Breakdown</h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {Object.entries(toolStats.by_tool).map(([toolName, stats]) => (
+                <ToolUsageRow key={toolName} name={toolName} {...stats} />
+              ))}
+            </div>
+          </>
+        )}
+
+        <p className="text-xs text-pulse-fg-muted mt-4">
+          Tool analytics persist across sessions and are stored in the project.
         </p>
       </SettingsSection>
     </div>
   );
 }
+
+function ModelUsageRow({
+  model,
+  tokens,
+  call_count,
+  cost_usd
+}: {
+  model: string;
+  tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  call_count: number;
+  cost_usd: number;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-pulse-bg-secondary rounded-lg gap-2">
+      <span className="text-sm font-medium text-pulse-fg font-mono">{model}</span>
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-pulse-fg-muted">
+        <span>{call_count.toLocaleString()} calls</span>
+        <span>{tokens.toLocaleString()} tokens</span>
+        <span className="text-pulse-success">${cost_usd.toFixed(4)}</span>
+      </div>
+    </div>
+  );
+}
+
+function ToolUsageRow({
+  name,
+  calls,
+  successes: _successes,
+  failures: _failures,
+  success_rate,
+  avg_duration_ms
+}: {
+  name: string;
+  calls: number;
+  successes: number;
+  failures: number;
+  success_rate: number;
+  avg_duration_ms: number;
+}) {
+  const rateColor = success_rate >= 0.9 ? 'text-pulse-success' : success_rate >= 0.7 ? 'text-pulse-warning' : 'text-pulse-error';
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-pulse-bg-secondary rounded-lg gap-2">
+      <span className="text-sm font-medium text-pulse-fg">{name}</span>
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-pulse-fg-muted">
+        <span>{calls} calls</span>
+        <span className={rateColor}>{(success_rate * 100).toFixed(0)}% success</span>
+        <span>{avg_duration_ms.toFixed(0)}ms avg</span>
+      </div>
+    </div>
+  );
+}
+
 
 // ============================================================================
 // Appearance Settings
@@ -423,7 +679,7 @@ function EditorSettings() {
           label="Word Wrap"
           description="Controls how lines should wrap"
         >
-          <select className="w-32 px-3 py-1.5 bg-pulse-input border border-pulse-border rounded text-sm focus:outline-none focus:border-pulse-primary">
+          <select aria-label="Word Wrap" className="w-32 px-3 py-1.5 bg-pulse-input border border-pulse-border rounded text-sm focus:outline-none focus:border-pulse-primary">
             <option>off</option>
             <option>on</option>
             <option>wordWrapColumn</option>
@@ -442,7 +698,7 @@ function EditorSettings() {
           label="Line Numbers"
           description="Controls the display of line numbers"
         >
-          <select className="w-32 px-3 py-1.5 bg-pulse-input border border-pulse-border rounded text-sm focus:outline-none focus:border-pulse-primary">
+          <select aria-label="Line Numbers" className="w-32 px-3 py-1.5 bg-pulse-input border border-pulse-border rounded text-sm focus:outline-none focus:border-pulse-primary">
             <option>on</option>
             <option>off</option>
             <option>relative</option>

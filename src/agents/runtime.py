@@ -284,9 +284,26 @@ async def run_agent(
         # ====================================================================
 
         settings_mgr = get_settings_manager()
+        master_model = settings_mgr.get_model("master_agent")
+        
+        # Auto-detect provider from model name
+        def detect_provider(model_name: str) -> str:
+            model_lower = model_name.lower()
+            if model_lower.startswith("claude"):
+                return "anthropic"
+            elif model_lower.startswith("gemini"):
+                return "google"
+            else:
+                return "openai"  # Default for gpt-* models
+        
         settings_snapshot = {
-            "provider": "openai",  # TODO: Read from settings
-            "model": settings_mgr.get_model("master_agent"),
+            "provider": detect_provider(master_model),
+            "model": master_model,  # Direct model key for backwards compat
+            "models": {
+                "master_agent": master_model,
+                "crew_coder": settings_mgr.get_model("crew_coder"),
+                "autogen_auditor": settings_mgr.get_model("autogen_auditor"),
+            },
             "enable_crew": settings_mgr.get_preference("enable_crew", True),
             "enable_autogen": settings_mgr.get_preference("enable_autogen", True),
         }

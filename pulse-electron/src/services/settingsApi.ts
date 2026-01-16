@@ -195,3 +195,122 @@ export async function getConfigPath(): Promise<string> {
   const data = await response.json();
   return data.config_path;
 }
+
+// ============================================================================
+// Usage Statistics
+// ============================================================================
+
+/**
+ * Model-level usage breakdown.
+ */
+export interface ModelUsage {
+  model: string;
+  tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_usd: number;
+  call_count: number;
+}
+
+/**
+ * Session usage statistics.
+ */
+export interface UsageStatistics {
+  total_calls: number;
+  total_tokens: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_cost_usd: number;
+  by_model: ModelUsage[];
+}
+
+/**
+ * Fetch current session usage statistics.
+ */
+export async function fetchUsageStatistics(): Promise<UsageStatistics> {
+  const baseUrl = await getBaseUrl();
+  const response = await fetch(`${baseUrl}/settings/usage`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch usage statistics: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Reset session usage statistics.
+ */
+export async function resetUsageStatistics(): Promise<{ success: boolean; message: string }> {
+  const baseUrl = await getBaseUrl();
+  const response = await fetch(`${baseUrl}/settings/usage/reset`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to reset usage statistics: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+// ============================================================================
+// Tool Analytics
+// ============================================================================
+
+/**
+ * Tool usage statistics.
+ */
+export interface ToolStats {
+  calls: number;
+  successes: number;
+  failures: number;
+  success_rate: number;
+  avg_duration_ms: number;
+  total_duration_ms: number;
+}
+
+/**
+ * Tool analytics summary.
+ */
+export interface ToolAnalytics {
+  total_calls: number;
+  total_successes: number;
+  total_failures: number;
+  overall_success_rate: number;
+  by_tool: Record<string, ToolStats>;
+  slow_tools: string[];
+  failing_tools: string[];
+}
+
+/**
+ * Fetch tool usage analytics.
+ */
+export async function fetchToolAnalytics(projectRoot?: string): Promise<ToolAnalytics> {
+  const baseUrl = await getBaseUrl();
+  const params = projectRoot ? `?project_root=${encodeURIComponent(projectRoot)}` : '';
+  const response = await fetch(`${baseUrl}/settings/analytics${params}`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch tool analytics: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Reset tool usage analytics.
+ */
+export async function resetToolAnalytics(projectRoot?: string): Promise<{ success: boolean; message: string }> {
+  const baseUrl = await getBaseUrl();
+  const params = projectRoot ? `?project_root=${encodeURIComponent(projectRoot)}` : '';
+  const response = await fetch(`${baseUrl}/settings/analytics/reset${params}`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to reset tool analytics: ${response.statusText}`);
+  }
+
+  return response.json();
+}

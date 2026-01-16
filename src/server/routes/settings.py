@@ -26,7 +26,7 @@ router = APIRouter()
 
 class APIKeyUpdate(BaseModel):
     """Request model for updating an API key."""
-    provider: str = Field(..., description="Provider name: 'openai' or 'anthropic'")
+    provider: str = Field(..., description="Provider name: 'openai', 'anthropic', or 'google'")
     api_key: str = Field(..., description="The API key value")
 
 
@@ -53,6 +53,7 @@ class APIKeyStatusResponse(BaseModel):
     """Response model for API key status (without revealing the key)."""
     openai_configured: bool
     anthropic_configured: bool
+    google_configured: bool
 
 
 # ============================================================================
@@ -76,6 +77,7 @@ async def get_settings():
         masked_settings["api_keys"] = {
             "openai": _mask_key(api_keys.get("openai", "")),
             "anthropic": _mask_key(api_keys.get("anthropic", "")),
+            "google": _mask_key(api_keys.get("google", "")),
         }
 
         return masked_settings
@@ -93,10 +95,12 @@ async def get_api_key_status():
         manager = get_settings_manager()
         openai_key = manager.get_api_key("openai")
         anthropic_key = manager.get_api_key("anthropic")
+        google_key = manager.get_api_key("google")
 
         return APIKeyStatusResponse(
             openai_configured=bool(openai_key),
             anthropic_configured=bool(anthropic_key),
+            google_configured=bool(google_key),
         )
     except Exception as e:
         logger.error(f"Failed to get API key status: {e}")
@@ -108,8 +112,8 @@ async def update_api_key(update: APIKeyUpdate):
     """
     Update an API key.
     """
-    if update.provider not in ["openai", "anthropic"]:
-        raise HTTPException(status_code=400, detail="Invalid provider. Must be 'openai' or 'anthropic'")
+    if update.provider not in ["openai", "anthropic", "google"]:
+        raise HTTPException(status_code=400, detail="Invalid provider. Must be 'openai', 'anthropic', or 'google'")
 
     try:
         manager = get_settings_manager()
@@ -204,6 +208,90 @@ async def reset_settings():
 
 
 # ============================================================================
+# Usage Statistics (Session-based Token Tracking)
+# ============================================================================
+
+@router.get("/settings/usage")
+async def get_usage_statistics():
+    """
+    Get current session usage statistics (tokens, costs, calls).
+    """
+    try:
+        from src.core.llm_client import get_session_tracker
+        
+        tracker = get_session_tracker()
+        breakdown = tracker.get_model_breakdown()
+        
+        return {
+            "total_calls": tracker.call_count,
+            "total_tokens": tracker.total_tokens,
+            "total_prompt_tokens": tracker.total_prompt_tokens,
+            "total_completion_tokens": tracker.total_completion_tokens,
+            "total_cost_usd": tracker.total_cost_usd,
+            "by_model": breakdown
+        }
+    except Exception as e:
+        logger.error(f"Failed to get usage statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/settings/usage/reset")
+async def reset_usage_statistics():
+    """
+    Reset session usage statistics.
+    """
+    try:
+        from src.core.llm_client import get_session_tracker
+        
+        tracker = get_session_tracker()
+        tracker.reset()
+        logger.info("Session usage statistics reset")
+        return {"success": True, "message": "Usage statistics reset"}
+    except Exception as e:
+        logger.error(f"Failed to reset usage statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Tool Analytics (Persistent Tool Usage Tracking)
+# ============================================================================
+
+@router.get("/settings/analytics")
+async def get_tool_analytics(project_root: Optional[str] = None):
+    """
+    Get tool usage analytics.
+    """
+    try:
+        from pathlib import Path
+        from src.core.analytics import get_analytics_summary
+        
+        path = Path(project_root) if project_root else None
+        summary = get_analytics_summary(path)
+        return summary
+    except Exception as e:
+        logger.error(f"Failed to get tool analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/settings/analytics/reset")
+async def reset_tool_analytics(project_root: Optional[str] = None):
+    """
+    Reset tool usage analytics.
+    """
+    try:
+        from pathlib import Path
+        from src.core.analytics import reset_analytics
+        
+        path = Path(project_root) if project_root else None
+        reset_analytics(path)
+        logger.info("Tool analytics reset")
+        return {"success": True, "message": "Tool analytics reset"}
+    except Exception as e:
+        logger.error(f"Failed to reset tool analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
 # Helpers
 # ============================================================================
 
@@ -212,3 +300,4 @@ def _mask_key(key: str) -> str:
     if not key or len(key) < 12:
         return "••••••••" if key else ""
     return f"{key[:4]}••••••••{key[-4:]}"
+

@@ -57,6 +57,19 @@ function WelcomeView({ hasWorkspace }: { hasWorkspace: boolean }) {
     }
   };
 
+  // When workspace is open, show minimal view (just logo and "Pulse")
+  if (hasWorkspace) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-center p-8">
+        <div className="w-32 h-32 mb-8 opacity-30 flex items-center justify-center">
+          <PulseLogo size={280} />
+        </div>
+        <h1 className="text-2xl font-light text-pulse-fg">Pulse</h1>
+      </div>
+    );
+  }
+
+  // When no workspace is open, show full welcome UI
   return (
     <div className="h-full flex flex-col items-center justify-center text-center p-8">
       <div className="w-32 h-32 mb-8 opacity-30 flex items-center justify-center">
@@ -64,21 +77,16 @@ function WelcomeView({ hasWorkspace }: { hasWorkspace: boolean }) {
       </div>
 
       {/* Title */}
-      <h1 className="text-2xl font-light text-pulse-fg mb-2">Pulse IDE</h1>
-      <p className="text-sm text-pulse-fg-muted mb-8">
-        Agentic AI IDE for PLC Coding
-      </p>
+      <h1 className="text-2xl font-light text-pulse-fg mb-8">Pulse</h1>
 
       {/* Actions */}
       <div className="space-y-3">
-        {!hasWorkspace && (
-          <WelcomeAction
-            icon={<FolderIcon />}
-            label="Open Folder"
-            shortcut="Ctrl+K"
-            onClick={handleOpenFolder}
-          />
-        )}
+        <WelcomeAction
+          icon={<FolderIcon />}
+          label="Open Folder"
+          shortcut="Ctrl+K"
+          onClick={handleOpenFolder}
+        />
         <WelcomeAction
           icon={<FileIcon />}
           label="Open File"

@@ -2,7 +2,7 @@
  * FileExplorer - File Tree View
  *
  * Displays the workspace file tree with expand/collapse functionality.
- */
+*/
 
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
@@ -21,14 +21,6 @@ interface ContextMenuState {
   node: FileTreeNode | null;
 }
 
-interface ContextMenuItem {
-  label: string;
-  icon?: React.ReactNode;
-  onClick: () => void;
-  divider?: boolean;
-  disabled?: boolean;
-  destructive?: boolean;
-}
 
 export function FileExplorer() {
   const {
@@ -58,6 +50,9 @@ export function FileExplorer() {
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
+  // Pending new file/folder state for inline creation
+  const [pendingNew, setPendingNew] = useState<{ parentPath: string; type: 'file' | 'folder'; name: string } | null>(null);
+
   const handleOpenWorkspace = useCallback(async () => {
     const path = await window.pulseAPI.workspace.openFolder();
     if (path) {
@@ -76,6 +71,20 @@ export function FileExplorer() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [contextMenu.isOpen]);
 
+  // F2 keyboard handler for rename
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F2' && selectedPath && !renamingPath) {
+        e.preventDefault();
+        const name = selectedPath.split(/[\\/]/).pop() || '';
+        setRenamingPath(selectedPath);
+        setRenameValue(name);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedPath, renamingPath]);
+
   // Context menu handler
   const handleContextMenu = useCallback((e: React.MouseEvent, node: FileTreeNode) => {
     e.preventDefault();
@@ -89,49 +98,56 @@ export function FileExplorer() {
     });
   }, [selectPath]);
 
-  // Context menu actions
-  const handleNewFile = useCallback(async (parentPath: string) => {
-    const name = prompt('Enter file name:');
-    if (!name?.trim()) return;
+  // Context menu actions - trigger inline input for new file/folder
+  const handleNewFile = useCallback((parentPath: string) => {
+    // Expand the parent folder if it exists in the tree
+    if (!expandedFolders.has(parentPath)) {
+      toggleFolder(parentPath);
+    }
+    setPendingNew({ parentPath, type: 'file', name: '' });
+  }, [expandedFolders, toggleFolder]);
+
+  const handleNewFolder = useCallback((parentPath: string) => {
+    // Expand the parent folder if it exists in the tree
+    if (!expandedFolders.has(parentPath)) {
+      toggleFolder(parentPath);
+    }
+    setPendingNew({ parentPath, type: 'folder', name: '' });
+  }, [expandedFolders, toggleFolder]);
+
+  // Submit pending new file/folder
+  const handlePendingNewSubmit = useCallback(async () => {
+    if (!pendingNew || !pendingNew.name.trim()) {
+      setPendingNew(null);
+      return;
+    }
 
     const sep = window.pulseAPI.platform === 'win32' ? '\\' : '/';
-    const newPath = `${parentPath}${sep}${name}`;
+    const newPath = `${pendingNew.parentPath}${sep}${pendingNew.name}`;
 
     try {
-      await window.pulseAPI.fs.writeFile(newPath, '');
-      refreshTree();
-      // Open the new file
-      setTimeout(async () => {
-        const content = await window.pulseAPI.fs.readFile(newPath);
-        useEditorStore.getState().openFile(newPath, content, { isPreview: false });
-      }, 100);
+      if (pendingNew.type === 'file') {
+        await window.pulseAPI.fs.writeFile(newPath, '');
+        refreshTree();
+        // Open the new file
+        setTimeout(async () => {
+          const content = await window.pulseAPI.fs.readFile(newPath);
+          useEditorStore.getState().openFile(newPath, content, { isPreview: false });
+        }, 100);
+      } else {
+        await window.pulseAPI.fs.mkdir(newPath);
+        refreshTree();
+      }
     } catch (error) {
       useUIStore.getState().addNotification({
         type: 'error',
-        title: 'Failed to create file',
+        title: `Failed to create ${pendingNew.type}`,
         message: (error as Error).message,
       });
     }
-  }, [refreshTree]);
 
-  const handleNewFolder = useCallback(async (parentPath: string) => {
-    const name = prompt('Enter folder name:');
-    if (!name?.trim()) return;
-
-    const sep = window.pulseAPI.platform === 'win32' ? '\\' : '/';
-    const newPath = `${parentPath}${sep}${name}`;
-
-    try {
-      await window.pulseAPI.fs.mkdir(newPath);
-      refreshTree();
-    } catch (error) {
-      useUIStore.getState().addNotification({
-        type: 'error',
-        title: 'Failed to create folder',
-        message: (error as Error).message,
-      });
-    }
-  }, [refreshTree]);
+    setPendingNew(null);
+  }, [pendingNew, refreshTree]);
 
   const handleRename = useCallback((path: string, currentName: string) => {
     setRenamingPath(path);
@@ -295,6 +311,15 @@ export function FileExplorer() {
             depth={0}
             selectedPath={selectedPath}
             expandedFolders={expandedFolders}
+            renamingPath={renamingPath}
+            renameValue={renameValue}
+            onRenameChange={setRenameValue}
+            onRenameSubmit={handleRenameSubmit}
+            onRenameCancel={() => { setRenamingPath(null); setRenameValue(''); }}
+            pendingNew={pendingNew}
+            onPendingNewChange={(name) => setPendingNew(pendingNew ? { ...pendingNew, name } : null)}
+            onPendingNewSubmit={handlePendingNewSubmit}
+            onPendingNewCancel={() => setPendingNew(null)}
             onClick={handleFileClick}
             onDoubleClick={handleFileDoubleClick}
             onContextMenu={handleContextMenu}
@@ -605,6 +630,15 @@ interface FileTreeItemProps {
   depth: number;
   selectedPath: string | null;
   expandedFolders: Set<string>;
+  renamingPath: string | null;
+  renameValue: string;
+  onRenameChange: (value: string) => void;
+  onRenameSubmit: (oldPath: string, newName: string) => void;
+  onRenameCancel: () => void;
+  pendingNew: { parentPath: string; type: 'file' | 'folder'; name: string } | null;
+  onPendingNewChange: (name: string) => void;
+  onPendingNewSubmit: () => void;
+  onPendingNewCancel: () => void;
   onClick: (node: FileTreeNode) => void;
   onDoubleClick: (node: FileTreeNode) => void;
   onContextMenu?: (e: React.MouseEvent, node: FileTreeNode) => void;
@@ -615,13 +649,63 @@ function FileTreeItem({
   depth,
   selectedPath,
   expandedFolders,
+  renamingPath,
+  renameValue,
+  onRenameChange,
+  onRenameSubmit,
+  onRenameCancel,
+  pendingNew,
+  onPendingNewChange,
+  onPendingNewSubmit,
+  onPendingNewCancel,
   onClick,
   onDoubleClick,
   onContextMenu,
 }: FileTreeItemProps) {
   const isExpanded = expandedFolders.has(node.path);
   const isSelected = selectedPath === node.path;
+  const isRenaming = renamingPath === node.path;
   const paddingLeft = 8 + depth * 12;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const newInputRef = useRef<HTMLInputElement>(null);
+
+  // Check if this folder has a pending new item
+  const hasPendingNew = pendingNew && pendingNew.parentPath === node.path && node.isDirectory;
+
+  // Focus input when entering rename mode
+  useEffect(() => {
+    if (isRenaming && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  // Focus input when creating new file/folder
+  useEffect(() => {
+    if (hasPendingNew && newInputRef.current) {
+      newInputRef.current.focus();
+    }
+  }, [hasPendingNew]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      onRenameSubmit(node.path, renameValue);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onRenameCancel();
+    }
+  };
+
+  const handleNewKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      onPendingNewSubmit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onPendingNewCancel();
+    }
+  };
 
   return (
     <>
@@ -631,8 +715,8 @@ function FileTreeItem({
           ${isSelected ? 'bg-pulse-selection' : 'hover:bg-pulse-bg-tertiary'}
         `}
         style={{ paddingLeft }}
-        onClick={() => onClick(node)}
-        onDoubleClick={() => onDoubleClick(node)}
+        onClick={() => !isRenaming && onClick(node)}
+        onDoubleClick={() => !isRenaming && onDoubleClick(node)}
         onContextMenu={(e) => onContextMenu?.(e, node)}
       >
         {/* Expand/Collapse or Spacer */}
@@ -651,25 +735,75 @@ function FileTreeItem({
           )}
         </div>
 
-        {/* Name */}
-        <span className="text-sm truncate">{node.name}</span>
+        {/* Name or Rename Input */}
+        {isRenaming ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={renameValue}
+            onChange={(e) => onRenameChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => onRenameSubmit(node.path, renameValue)}
+            className="flex-1 text-sm bg-pulse-input border border-pulse-primary rounded px-1 py-0 outline-none"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="text-sm truncate">{node.name}</span>
+        )}
       </div>
 
       {/* Children */}
-      {node.isDirectory && isExpanded && node.children && (
+      {node.isDirectory && isExpanded && (
         <div>
-          {node.children.map((child) => (
+          {node.children?.map((child) => (
             <FileTreeItem
               key={child.path}
               node={child}
               depth={depth + 1}
               selectedPath={selectedPath}
               expandedFolders={expandedFolders}
+              renamingPath={renamingPath}
+              renameValue={renameValue}
+              onRenameChange={onRenameChange}
+              onRenameSubmit={onRenameSubmit}
+              onRenameCancel={onRenameCancel}
+              pendingNew={pendingNew}
+              onPendingNewChange={onPendingNewChange}
+              onPendingNewSubmit={onPendingNewSubmit}
+              onPendingNewCancel={onPendingNewCancel}
               onClick={onClick}
               onDoubleClick={onDoubleClick}
               onContextMenu={onContextMenu}
             />
           ))}
+
+          {/* Inline input for new file/folder */}
+          {hasPendingNew && (
+            <div
+              className="flex items-center py-0.5 px-1 rounded-sm bg-pulse-bg-tertiary"
+              style={{ paddingLeft: 8 + (depth + 1) * 12 }}
+            >
+              <div className="w-4" />
+              <div className="w-4 h-4 mr-1.5 flex-shrink-0">
+                {pendingNew!.type === 'folder' ? (
+                  <FolderIcon isOpen={false} />
+                ) : (
+                  <FileIcon filename={pendingNew!.name || 'new'} />
+                )}
+              </div>
+              <input
+                ref={newInputRef}
+                type="text"
+                value={pendingNew!.name}
+                onChange={(e) => onPendingNewChange(e.target.value)}
+                onKeyDown={handleNewKeyDown}
+                onBlur={onPendingNewSubmit}
+                placeholder={pendingNew!.type === 'folder' ? 'folder name' : 'file name'}
+                className="flex-1 text-sm bg-pulse-input border border-pulse-primary rounded px-1 py-0 outline-none"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
         </div>
       )}
     </>
@@ -1025,7 +1159,6 @@ interface ContextMenuProps {
 function ContextMenu({
   x,
   y,
-  node,
   onNewFile,
   onNewFolder,
   onRename,

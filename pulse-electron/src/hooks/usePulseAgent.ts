@@ -247,7 +247,12 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
         response: payload.response?.substring(0, 100),
         error: payload.error,
         cancelled: payload.cancelled,
+        conversation_id: payload.conversation_id,
       });
+      // Store conversation_id for subsequent messages in this chat session
+      if (payload.conversation_id) {
+        useAgentStore.getState().startRun(payload.run_id, payload.conversation_id);
+      }
       endRun(payload.success, payload.response);
     },
     [endRun]
@@ -514,14 +519,17 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
 
               // Send via WebSocket
               const runId = crypto.randomUUID();
-              console.log('[usePulseAgent] Sending agent request with runId:', runId);
-              startRun(runId);
+              // Get current conversation ID from store to continue the conversation
+              const currentConversationId = storeState.conversationId;
+              console.log('[usePulseAgent] Sending agent request with runId:', runId, 'conversationId:', currentConversationId);
+              startRun(runId, currentConversationId || undefined);
 
               const payload: AgentRequestPayload = {
                 user_input: newMessage.content,
                 project_root: projectRoot,
                 mode: mode,
                 max_iterations: 10,
+                conversation_id: currentConversationId || undefined,
               };
 
               console.log('[usePulseAgent] Payload:', payload);

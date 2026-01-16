@@ -1,8 +1,8 @@
 /**
- * TerminalPanel - Interactive Terminal with PTY
+ * TerminalPanel - Interactive Terminal with PTY (Multi-Session)
  *
  * VS Code-style terminal panel using xterm.js with node-pty backend.
- * Provides a real interactive shell (PowerShell/bash).
+ * Supports multiple terminal sessions with tabs and kill functionality.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -16,18 +16,24 @@ import { useTheme } from '@/contexts/ThemeContext';
 
 interface TerminalSession {
   id: number;
+  name: string;
   terminal: Terminal;
   fitAddon: FitAddon;
+  containerEl: HTMLDivElement;
+  isConnected: boolean;
 }
 
 export function TerminalPanel() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const sessionRef = useRef<TerminalSession | null>(null);
+  const mainContainerRef = useRef<HTMLDivElement>(null);
+  const sessionsRef = useRef<Map<number, TerminalSession>>(new Map());
+  const [sessions, setSessions] = useState<{ id: number; name: string }[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const sessionCounterRef = useRef(0);
+
   const { terminalHeight, setTerminalHeight, terminalVisible } = useUIStore();
   const { projectRoot } = useWorkspaceStore();
   const { theme } = useTheme();
   const [isResizing, setIsResizing] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Get terminal theme colors
@@ -55,200 +61,215 @@ export function TerminalPanel() {
     brightWhite: '#ffffff',
   }), [theme]);
 
-  // Initialize terminal and PTY - runs when panel becomes visible with no session
-  useEffect(() => {
-    // Only initialize when panel is visible, container exists, and no session
-    if (!terminalVisible || !containerRef.current || sessionRef.current) return;
+  // Create a new terminal session
+  const createSession = useCallback(async () => {
+    if (!mainContainerRef.current || !window.pulseAPI?.pty) {
+      setError('Terminal API not available');
+      return;
+    }
 
-    const initTerminal = async () => {
-      // Check if PTY API is available
-      if (!window.pulseAPI?.pty) {
-        setError('Terminal API not available');
-        return;
-      }
+    sessionCounterRef.current += 1;
+    const sessionNum = sessionCounterRef.current;
+    const sessionName = `Terminal ${sessionNum}`;
 
-      // Create xterm.js terminal
-      const terminal = new Terminal({
-        fontFamily: '"Cascadia Code", Consolas, "Courier New", monospace',
-        fontSize: 13,
-        theme: getTerminalTheme(),
-        cursorBlink: true,
-        cursorStyle: 'bar',
-        scrollback: 5000,
-        allowTransparency: false,
-        windowsMode: window.pulseAPI.platform === 'win32',
+    // Create container for this terminal
+    const containerEl = document.createElement('div');
+    containerEl.className = 'w-full h-full';
+    containerEl.style.display = 'none'; // Hidden by default
+
+    mainContainerRef.current.appendChild(containerEl);
+
+    // Create xterm.js terminal
+    const terminal = new Terminal({
+      fontFamily: '"Cascadia Code", Consolas, "Courier New", monospace',
+      fontSize: 13,
+      theme: getTerminalTheme(),
+      cursorBlink: true,
+      cursorStyle: 'bar',
+      scrollback: 5000,
+      allowTransparency: false,
+    });
+
+    // Load addons
+    const fitAddon = new FitAddon();
+    const webLinksAddon = new WebLinksAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.loadAddon(webLinksAddon);
+
+    // Open terminal in container
+    terminal.open(containerEl);
+
+    // Delay fit to ensure container is sized
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Spawn PTY process
+    try {
+      const { id } = await window.pulseAPI.pty.spawn({
+        cwd: projectRoot || undefined,
+        cols: terminal.cols || 80,
+        rows: terminal.rows || 24,
       });
 
-      // Load addons
-      const fitAddon = new FitAddon();
-      const webLinksAddon = new WebLinksAddon();
-      terminal.loadAddon(fitAddon);
-      terminal.loadAddon(webLinksAddon);
+      // Store session
+      const session: TerminalSession = {
+        id,
+        name: sessionName,
+        terminal,
+        fitAddon,
+        containerEl,
+        isConnected: true,
+      };
+      sessionsRef.current.set(id, session);
 
-      // Open terminal in container
-      terminal.open(containerRef.current!);
+      // Forward terminal input to PTY
+      terminal.onData((data) => {
+        window.pulseAPI.pty.write(id, data);
+      });
 
-      // Delay fit to ensure container is sized
-      await new Promise(resolve => setTimeout(resolve, 50));
-      fitAddon.fit();
+      // Handle terminal resize
+      terminal.onResize(({ cols, rows }) => {
+        window.pulseAPI.pty.resize(id, cols, rows);
+      });
 
-      // Spawn PTY process
-      try {
-        const { id } = await window.pulseAPI.pty.spawn({
-          cwd: projectRoot || undefined,
-          cols: terminal.cols,
-          rows: terminal.rows,
-        });
-
-        // Store session
-        sessionRef.current = {
-          id,
-          terminal,
-          fitAddon,
-        };
-
-        setIsConnected(true);
-        setError(null);
-
-        // Forward terminal input to PTY
-        terminal.onData((data) => {
-          window.pulseAPI.pty.write(id, data);
-        });
-
-        // Handle terminal resize
-        terminal.onResize(({ cols, rows }) => {
-          window.pulseAPI.pty.resize(id, cols, rows);
-        });
-
-        // Subscribe to PTY output
-        const unsubData = window.pulseAPI.pty.onData((ptyId, data) => {
-          if (ptyId === id && sessionRef.current?.terminal) {
-            sessionRef.current.terminal.write(data);
-          }
-        });
-
-        // Subscribe to PTY exit
-        const unsubExit = window.pulseAPI.pty.onExit((ptyId, exitCode) => {
-          if (ptyId === id) {
-            terminal.writeln(`\r\n\x1b[33mProcess exited with code ${exitCode}\x1b[0m`);
-            setIsConnected(false);
-          }
-        });
-
-        // Focus terminal
-        terminal.focus();
-
-        // Return cleanup function
-        return () => {
-          unsubData();
-          unsubExit();
-          window.pulseAPI.pty.kill(id);
-          terminal.dispose();
-          sessionRef.current = null;
-        };
-      } catch (err) {
-        console.error('Failed to spawn PTY:', err);
-        setError(err instanceof Error ? err.message : 'Failed to start terminal');
-
-        // Fall back to simple terminal mode
-        terminal.writeln('\x1b[1;36mPulse Terminal (Simple Mode)\x1b[0m');
-        terminal.writeln('\x1b[33mInteractive terminal not available. Using command execution mode.\x1b[0m');
-        terminal.writeln('');
-        terminal.write('$ ');
-
-        sessionRef.current = {
-          id: -1,
-          terminal,
-          fitAddon,
-        };
-
-        // Simple command execution mode (fallback)
-        let currentLine = '';
-        terminal.onData((data) => {
-          if (data === '\r') {
-            terminal.writeln('');
-            if (currentLine.trim() && window.pulseAPI?.terminal?.execute) {
-              window.pulseAPI.terminal.execute(currentLine)
-                .then((result) => {
-                  if (result) {
-                    result.split('\n').forEach(line => terminal.writeln(line));
-                  }
-                  terminal.write('$ ');
-                })
-                .catch((err) => {
-                  terminal.writeln(`\x1b[31mError: ${err.message}\x1b[0m`);
-                  terminal.write('$ ');
-                });
-            } else {
-              terminal.write('$ ');
-            }
-            currentLine = '';
-          } else if (data === '\x7f') {
-            // Backspace
-            if (currentLine.length > 0) {
-              currentLine = currentLine.slice(0, -1);
-              terminal.write('\b \b');
-            }
-          } else if (data === '\x03') {
-            terminal.writeln('^C');
-            currentLine = '';
-            terminal.write('$ ');
-          } else { // Handle printable characters and tabs
-            currentLine += data;
-            terminal.write(data);
-          }
-        });
-      }
-    };
-
-    initTerminal();
-
-    return () => {
-      if (sessionRef.current) {
-        if (sessionRef.current.id !== -1) {
-          window.pulseAPI.pty.kill(sessionRef.current.id);
+      // Subscribe to PTY output
+      window.pulseAPI.pty.onData((ptyId: number, data: string) => {
+        const sess = sessionsRef.current.get(ptyId);
+        if (sess) {
+          sess.terminal.write(data);
         }
-        sessionRef.current.terminal.dispose();
-        sessionRef.current = null;
+      });
+
+      // Subscribe to PTY exit
+      window.pulseAPI.pty.onExit((ptyId: number, exitCode: number) => {
+        const sess = sessionsRef.current.get(ptyId);
+        if (sess) {
+          sess.terminal.writeln(`\r\n\x1b[33mProcess exited with code ${exitCode}\x1b[0m`);
+          sess.isConnected = false;
+        }
+      });
+
+      // Update state
+      setSessions(prev => [...prev, { id, name: sessionName }]);
+      setActiveSessionId(id);
+      setError(null);
+
+      // Show and focus this terminal
+      containerEl.style.display = 'block';
+      fitAddon.fit();
+      terminal.focus();
+
+    } catch (err) {
+      console.error('Failed to spawn PTY:', err);
+      setError(err instanceof Error ? err.message : 'Failed to start terminal');
+      containerEl.remove();
+    }
+  }, [projectRoot, getTerminalTheme]);
+
+  // Kill/close a terminal session
+  const killSession = useCallback(async (sessionId: number) => {
+    const session = sessionsRef.current.get(sessionId);
+    if (!session) return;
+
+    // Kill PTY
+    if (session.isConnected) {
+      try {
+        await window.pulseAPI.pty.kill(sessionId);
+      } catch (e) {
+        console.warn('Error killing PTY:', e);
       }
-    };
-  }, [terminalVisible, projectRoot, getTerminalTheme]); // Re-run when panel becomes visible
+    }
+
+    // Dispose terminal
+    session.terminal.dispose();
+    session.containerEl.remove();
+    sessionsRef.current.delete(sessionId);
+
+    // Update state
+    setSessions(prev => prev.filter(s => s.id !== sessionId));
+
+    // If this was active, switch to another session
+    if (activeSessionId === sessionId) {
+      const remaining = [...sessionsRef.current.keys()];
+      setActiveSessionId(remaining.length > 0 ? remaining[0] : null);
+    }
+  }, [activeSessionId]);
+
+  // Switch to a session
+  const switchToSession = useCallback((sessionId: number) => {
+    // Hide current session
+    if (activeSessionId !== null) {
+      const currentSession = sessionsRef.current.get(activeSessionId);
+      if (currentSession) {
+        currentSession.containerEl.style.display = 'none';
+      }
+    }
+
+    // Show new session
+    const newSession = sessionsRef.current.get(sessionId);
+    if (newSession) {
+      newSession.containerEl.style.display = 'block';
+      setActiveSessionId(sessionId);
+      setTimeout(() => {
+        newSession.fitAddon.fit();
+        newSession.terminal.focus();
+      }, 10);
+    }
+  }, [activeSessionId]);
+
+  // Auto-create first session when panel becomes visible with no sessions
+  useEffect(() => {
+    if (terminalVisible && sessions.length === 0 && mainContainerRef.current) {
+      createSession();
+    }
+  }, [terminalVisible, sessions.length, createSession]);
 
   // Update theme when it changes
   useEffect(() => {
-    if (sessionRef.current?.terminal) {
-      sessionRef.current.terminal.options.theme = getTerminalTheme();
-    }
+    sessionsRef.current.forEach(session => {
+      session.terminal.options.theme = getTerminalTheme();
+    });
   }, [theme, getTerminalTheme]);
 
   // Refit on resize or visibility change
   useEffect(() => {
-    if (sessionRef.current?.fitAddon && terminalVisible) {
-      setTimeout(() => {
-        sessionRef.current?.fitAddon.fit();
-        sessionRef.current?.terminal.focus();
-      }, 10);
+    if (terminalVisible && activeSessionId !== null) {
+      const session = sessionsRef.current.get(activeSessionId);
+      if (session) {
+        setTimeout(() => {
+          session.fitAddon.fit();
+          session.terminal.focus();
+        }, 10);
+      }
     }
-  }, [terminalHeight, terminalVisible]);
+  }, [terminalHeight, terminalVisible, activeSessionId]);
 
   // Handle window resize
   useEffect(() => {
     const handleResize = () => {
-      if (sessionRef.current?.fitAddon && terminalVisible) {
-        sessionRef.current.fitAddon.fit();
+      if (terminalVisible && activeSessionId !== null) {
+        const session = sessionsRef.current.get(activeSessionId);
+        if (session) {
+          session.fitAddon.fit();
+        }
       }
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [terminalVisible]);
+  }, [terminalVisible, activeSessionId]);
 
-  // Update PTY working directory when project changes
+  // Cleanup on unmount
   useEffect(() => {
-    if (projectRoot && sessionRef.current?.id && sessionRef.current.id !== -1) {
-      window.pulseAPI.pty.setCwd(sessionRef.current.id, projectRoot);
-    }
-  }, [projectRoot]);
+    return () => {
+      sessionsRef.current.forEach(session => {
+        if (session.isConnected) {
+          window.pulseAPI.pty.kill(session.id);
+        }
+        session.terminal.dispose();
+      });
+      sessionsRef.current.clear();
+    };
+  }, []);
 
   // Drag resize handler
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -267,78 +288,21 @@ export function TerminalPanel() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       // Refit after resize
-      setTimeout(() => sessionRef.current?.fitAddon.fit(), 0);
+      if (activeSessionId !== null) {
+        const session = sessionsRef.current.get(activeSessionId);
+        if (session) {
+          setTimeout(() => session.fitAddon.fit(), 0);
+        }
+      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Restart terminal
-  const handleRestart = useCallback(async () => {
-    if (sessionRef.current) {
-      if (sessionRef.current.id !== -1) {
-        await window.pulseAPI.pty.kill(sessionRef.current.id);
-      }
-      sessionRef.current.terminal.dispose();
-      sessionRef.current = null;
-    }
-
-    setIsConnected(false);
-    setError(null);
-
-    // Re-trigger initialization by forcing a remount
-    // This is a bit hacky, but works reliably
-    const container = containerRef.current;
-    if (container) {
-      container.innerHTML = '';
-
-      // Small delay then re-initialize
-      setTimeout(async () => {
-        if (!window.pulseAPI?.pty) return;
-
-        const terminal = new Terminal({
-          fontFamily: '"Cascadia Code", Consolas, "Courier New", monospace',
-          fontSize: 13,
-          theme: getTerminalTheme(),
-          cursorBlink: true,
-          cursorStyle: 'bar',
-          scrollback: 5000,
-          windowsMode: window.pulseAPI.platform === 'win32',
-        });
-
-        const fitAddon = new FitAddon();
-        terminal.loadAddon(fitAddon);
-        terminal.open(container);
-
-        await new Promise(r => setTimeout(r, 50));
-        fitAddon.fit();
-
-        try {
-          const { id } = await window.pulseAPI.pty.spawn({
-            cwd: projectRoot || undefined,
-            cols: terminal.cols,
-            rows: terminal.rows,
-          });
-
-          sessionRef.current = { id, terminal, fitAddon };
-          setIsConnected(true);
-
-          terminal.onData((data) => window.pulseAPI.pty.write(id, data));
-          terminal.onResize(({ cols, rows }) => window.pulseAPI.pty.resize(id, cols, rows));
-          window.pulseAPI.pty.onData((ptyId, data) => {
-            if (ptyId === id) terminal.write(data);
-          });
-
-          terminal.focus();
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to restart terminal');
-        }
-      }, 100);
-    }
-  }, [projectRoot, getTerminalTheme]);
-
   if (!terminalVisible) return null;
+
+  const activeSession = activeSessionId !== null ? sessionsRef.current.get(activeSessionId) : null;
 
   return (
     <div
@@ -352,24 +316,51 @@ export function TerminalPanel() {
         onMouseDown={handleMouseDown}
       />
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1 bg-pulse-bg-secondary border-b border-pulse-border flex-shrink-0">
-        <div className="flex items-center space-x-2">
-          <TerminalIcon />
-          <span className="text-xs font-medium text-pulse-fg">Terminal</span>
-          {isConnected && (
-            <span className="w-2 h-2 rounded-full bg-pulse-success" title="Connected" />
+      {/* Header with Tabs */}
+      <div className="flex items-center justify-between px-2 py-1 bg-pulse-bg-secondary border-b border-pulse-border flex-shrink-0">
+        {/* Left: Tabs */}
+        <div className="flex items-center space-x-1 overflow-x-auto">
+          {sessions.map((session) => (
+            <div
+              key={session.id}
+              className={`group flex items-center px-2 py-0.5 rounded text-xs cursor-pointer transition-colors ${session.id === activeSessionId
+                  ? 'bg-pulse-bg text-pulse-fg'
+                  : 'text-pulse-fg-muted hover:bg-pulse-bg-tertiary hover:text-pulse-fg'
+                }`}
+              onClick={() => switchToSession(session.id)}
+            >
+              <TerminalIcon />
+              <span className="ml-1.5 truncate max-w-24">{session.name}</span>
+              {/* Kill button on hover */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  killSession(session.id);
+                }}
+                className="ml-1.5 p-0.5 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 rounded transition-opacity"
+                title="Kill Terminal"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Right: Actions */}
+        <div className="flex items-center space-x-1 ml-2">
+          {/* Connection Status */}
+          {activeSession?.isConnected && (
+            <span className="w-2 h-2 rounded-full bg-pulse-success mr-2" title="Connected" />
           )}
           {error && (
-            <span className="text-xs text-pulse-warning" title={error}>
-              (Limited Mode)
+            <span className="text-xs text-pulse-warning mr-2" title={error}>
+              (Error)
             </span>
           )}
-        </div>
-        <div className="flex items-center space-x-1">
+
           {/* New Terminal Button */}
           <button
-            onClick={handleRestart}
+            onClick={createSession}
             className="text-pulse-fg-muted hover:text-pulse-fg p-1 rounded hover:bg-pulse-bg-tertiary"
             title="New Terminal"
           >
@@ -383,7 +374,7 @@ export function TerminalPanel() {
           >
             <MinimizeIcon />
           </button>
-          {/* Close Button */}
+          {/* Close Panel Button */}
           <button
             onClick={() => useUIStore.getState().toggleTerminal()}
             className="text-pulse-fg-muted hover:text-pulse-fg p-1 rounded hover:bg-pulse-bg-tertiary"
@@ -396,10 +387,9 @@ export function TerminalPanel() {
 
       {/* Terminal Content */}
       <div
-        ref={containerRef}
-        className="flex-1 overflow-hidden"
-        style={{ padding: '4px 8px' }}
-        onClick={() => sessionRef.current?.terminal.focus()}
+        ref={mainContainerRef}
+        className="flex-1 overflow-hidden p-1"
+        onClick={() => activeSession?.terminal.focus()}
       />
     </div>
   );
@@ -411,7 +401,7 @@ export function TerminalPanel() {
 
 function TerminalIcon() {
   return (
-    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-pulse-fg-muted">
+    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 flex-shrink-0">
       <path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3zm1 0v10h10V3H3z" />
       <path d="M4 6l3 2-3 2V6zm4 4h4v1H8v-1z" />
     </svg>

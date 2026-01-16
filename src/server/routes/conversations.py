@@ -37,6 +37,14 @@ def get_db() -> ConversationDB:
     return ConversationDB(_project_root)
 
 
+def get_db_for_project(project_root: Optional[str] = None) -> ConversationDB:
+    """Get database instance for a specific project or default."""
+    path = project_root or _project_root
+    if not path:
+        raise HTTPException(status_code=400, detail="No project specified")
+    return ConversationDB(path)
+
+
 # ============================================================================
 # Request/Response Models
 # ============================================================================
@@ -58,19 +66,39 @@ class ConversationResponse(BaseModel):
 # ============================================================================
 
 @router.get("")
-async def list_conversations(limit: int = 20) -> List[Dict[str, Any]]:
+async def list_conversations(
+    limit: int = 20,
+    project_root: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
-    Get recent conversations for the current project.
+    Get recent conversations for a project.
     
-    Returns list of conversations with title and timestamps.
+    Args:
+        limit: Maximum number of conversations to return.
+        project_root: Path to project root (required if not set globally).
+    
+    Returns list of conversations with title, timestamps, and first message preview.
     """
     try:
-        db = get_db()
+        db = get_db_for_project(project_root)
         conversations = db.get_recent_conversations(limit=limit)
         
-        # Add message counts
+        # Add message counts and first message preview
         for conv in conversations:
             conv["message_count"] = db.get_message_count(conv["id"])
+            
+            # Get first user message for preview
+            messages = db.get_messages(conv["id"], limit=5)
+            first_user_msg = next((m for m in messages if m.get("role") == "user"), None)
+            if first_user_msg:
+                content = first_user_msg.get("content", "")
+                # Truncate to 20 chars for display (Claude-code style)
+                if len(content) > 20:
+                    conv["first_message"] = content[:20] + "..."
+                else:
+                    conv["first_message"] = content
+            else:
+                conv["first_message"] = None
         
         return conversations
     except Exception as e:
@@ -100,12 +128,15 @@ async def create_conversation(request: CreateConversationRequest) -> Dict[str, A
 
 
 @router.get("/{conversation_id}")
-async def get_conversation(conversation_id: str) -> Dict[str, Any]:
+async def get_conversation(
+    conversation_id: str,
+    project_root: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Get a conversation with its messages.
     """
     try:
-        db = get_db()
+        db = get_db_for_project(project_root)
         conversation = db.get_conversation(conversation_id)
         
         if not conversation:
@@ -125,12 +156,15 @@ async def get_conversation(conversation_id: str) -> Dict[str, Any]:
 
 
 @router.delete("/{conversation_id}")
-async def delete_conversation(conversation_id: str) -> Dict[str, Any]:
+async def delete_conversation(
+    conversation_id: str,
+    project_root: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Delete a conversation and all its messages.
     """
     try:
-        db = get_db()
+        db = get_db_for_project(project_root)
         success = db.delete_conversation(conversation_id)
         
         if not success:
@@ -142,3 +176,4 @@ async def delete_conversation(conversation_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to delete conversation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+

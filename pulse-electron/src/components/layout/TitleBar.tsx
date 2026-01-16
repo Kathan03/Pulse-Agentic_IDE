@@ -134,11 +134,10 @@ function MenuDropdown({ label, isOpen, onToggle, onClose, children }: MenuDropdo
     <div className="relative" ref={menuRef}>
       <button
         onClick={onToggle}
-        className={`px-2 py-1 text-xs transition-colors rounded ${
-          isOpen
-            ? 'bg-pulse-bg-tertiary text-pulse-fg'
-            : 'text-pulse-fg-muted hover:text-pulse-fg hover:bg-pulse-bg-tertiary'
-        }`}
+        className={`px-2 py-1 text-xs transition-colors rounded ${isOpen
+          ? 'bg-pulse-bg-tertiary text-pulse-fg'
+          : 'text-pulse-fg-muted hover:text-pulse-fg hover:bg-pulse-bg-tertiary'
+          }`}
       >
         {label}
       </button>
@@ -167,11 +166,10 @@ function MenuItem({ label, shortcut, onClick, disabled }: MenuItemProps) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-full px-3 py-1.5 text-xs flex items-center justify-between ${
-        disabled
-          ? 'text-pulse-fg-muted cursor-not-allowed'
-          : 'text-pulse-fg hover:bg-pulse-bg-tertiary'
-      }`}
+      className={`w-full px-3 py-1.5 text-xs flex items-center justify-between ${disabled
+        ? 'text-pulse-fg-muted cursor-not-allowed'
+        : 'text-pulse-fg hover:bg-pulse-bg-tertiary'
+        }`}
     >
       <span>{label}</span>
       {shortcut && (
@@ -192,7 +190,10 @@ function MenuDivider() {
 function FileMenuItems({ onClose }: { onClose: () => void }) {
   const handleOpenFolder = async () => {
     try {
-      await window.pulseAPI.workspace.openFolder();
+      const path = await window.pulseAPI.workspace.openFolder();
+      if (path) {
+        useWorkspaceStore.getState().openWorkspace(path);
+      }
     } catch (error) {
       console.error('Failed to open folder:', error);
     }
@@ -201,7 +202,11 @@ function FileMenuItems({ onClose }: { onClose: () => void }) {
 
   const handleOpenFile = async () => {
     try {
-      await window.pulseAPI.workspace.openFile();
+      const filePath = await window.pulseAPI.workspace.openFile();
+      if (filePath) {
+        const fileContent = await window.pulseAPI.fs.readFile(filePath);
+        useEditorStore.getState().openFile(filePath, fileContent);
+      }
     } catch (error) {
       console.error('Failed to open file:', error);
     }
@@ -380,11 +385,10 @@ function WindowButton({ onClick, title, isClose, children }: WindowButtonProps) 
     <button
       onClick={onClick}
       title={title}
-      className={`w-12 h-titlebar flex items-center justify-center transition-colors ${
-        isClose
-          ? 'hover:bg-red-600 hover:text-white'
-          : 'hover:bg-pulse-bg-tertiary'
-      }`}
+      className={`w-12 h-titlebar flex items-center justify-center transition-colors ${isClose
+        ? 'hover:bg-red-600 hover:text-white'
+        : 'hover:bg-pulse-bg-tertiary'
+        }`}
     >
       {children}
     </button>
