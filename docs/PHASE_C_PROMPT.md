@@ -79,9 +79,94 @@ GitHub Actions provides:
 
 1. **Automated Builds**: When code is pushed, automatically build and test
 2. **Automated Releases**: When a version tag (e.g., `v0.1.0`) is pushed, create a GitHub Release
-3. **Downloadable Executables**: Provide `Pulse-0.1.0-win-x64.exe` (and optionally macOS/Linux)
+3. **NSIS Installer**: Provide `Pulse-Setup-0.1.0.exe` - a Windows installer
 4. **Bundled Backend**: Package Python backend with the Electron app
-5. **No Setup Required**: Double-click the exe, Pulse starts
+5. **No Setup Required**: Run installer → Double-click `Pulse.exe` → Pulse starts
+
+### Installer Specifications
+
+The release should produce an **NSIS installer** (`Pulse-Setup-0.1.0.exe`) that:
+
+- Shows a setup wizard (Next → Install → Finish)
+- Installs Pulse to `C:\Program Files\Pulse`
+- Creates Start Menu shortcuts
+- Adds entry to "Add/Remove Programs" (clean uninstall)
+- Optionally creates desktop shortcuts
+- The installed application should be named **`Pulse.exe`**
+- Uses icon: `assets/pulse_icon_bg_020321.ico`
+
+### Installer UI Design
+
+The NSIS installer should have the following screens:
+
+**Screen 1: Welcome**
+```
+┌────────────────────────────────────────────────┐
+│  [Pulse Icon]                                  │
+│                                                │
+│  Welcome to Pulse Setup                        │
+│                                                │
+│  Setup will guide you through the             │
+│  installation of Pulse.                        │
+│                                                │
+│  Click Next to continue.                       │
+│                                                │
+│                    [Next >]  [Cancel]          │
+└────────────────────────────────────────────────┘
+```
+
+**Screen 2: Choose Install Location**
+```
+┌────────────────────────────────────────────────┐
+│  Choose Install Location                       │
+│                                                │
+│  Destination Folder:                           │
+│  ┌──────────────────────────────┐ [Browse...] │
+│  │ C:\Program Files\Pulse       │              │
+│  └──────────────────────────────┘              │
+│                                                │
+│  Space required: ~250 MB                       │
+│  Space available: 120 GB                       │
+│                                                │
+│       [< Back]  [Install]  [Cancel]            │
+└────────────────────────────────────────────────┘
+```
+
+**Screen 3: Installing (Progress)**
+```
+┌────────────────────────────────────────────────┐
+│  Installing                                    │
+│                                                │
+│  Please wait while Pulse is being installed.  │
+│                                                │
+│  ████████████████░░░░░░░░░░░░  62%            │
+│                                                │
+│  Extracting: pulse-backend.exe                 │
+│                                                │
+│                              [Cancel]          │
+└────────────────────────────────────────────────┘
+```
+
+**Screen 4: Finish**
+```
+┌────────────────────────────────────────────────┐
+│  Completing Pulse Setup                        │
+│                                                │
+│  Setup has finished installing Pulse on       │
+│  your computer.                                │
+│                                                │
+│  ☑ Create Desktop Shortcut                    │
+│  ☑ Launch Pulse                               │
+│                                                │
+│                    [Finish]                    │
+└────────────────────────────────────────────────┘
+```
+
+**Customization Options (Optional):**
+- Custom header banner image (150x57 pixels)
+- Custom sidebar/wizard image (164x314 pixels)
+- License agreement page (if needed)
+- Custom installer icon (use `pulse_icon_bg_020321.ico`)
 
 ---
 
@@ -129,21 +214,45 @@ The Python backend needs to be bundled with the Electron app:
 - Pros: Single file, fast startup
 - Cons: Large file size (~100MB+)
 
-**Option B: Embedded Python**
-- Include Python runtime with electron-builder
-- Install dependencies on first run
-- Pros: Smaller download
-- Cons: First-run delay
-
-**Recommended: Option A (PyInstaller)** for simplicity
 
 #### 3. Electron Builder Configuration
 
 Update `pulse-electron/package.json` with electron-builder config:
-- Target: NSIS installer for Windows
+
+```json
+{
+  "build": {
+    "appId": "com.pulse.ide",
+    "productName": "Pulse",
+    "win": {
+      "target": "nsis",
+      "icon": "../assets/pulse_icon_bg_020321.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pulse",
+      "installerIcon": "../assets/pulse_icon_bg_020321.ico",
+      "uninstallerIcon": "../assets/pulse_icon_bg_020321.ico"
+    },
+    "extraResources": [
+      {
+        "from": "../dist-backend/pulse-backend.exe",
+        "to": "backend/pulse-backend.exe"
+      }
+    ]
+  }
+}
+```
+
+Key requirements:
+- **App name**: `Pulse` (produces `Pulse.exe`)
+- **Icon**: `assets/pulse_icon_bg_020321.ico`
+- **Installer name**: `Pulse-Setup-${version}.exe`
+- **Install location**: `C:\Program Files\Pulse`
 - Include backend executable as extra resource
-- Configure app metadata (name, version, icon)
-- Set up auto-update (optional for v0.1)
 
 #### 4. Version Management
 
@@ -183,9 +292,12 @@ src/
 
 - [ ] CI runs on every push and PR
 - [ ] Release workflow creates GitHub Release on tag push
-- [ ] Windows executable is downloadable from releases
+- [ ] `Pulse-Setup-0.1.0.exe` installer is downloadable from releases
+- [ ] Installer creates `Pulse.exe` in `C:\Program Files\Pulse`
+- [ ] Start Menu and optional Desktop shortcuts are created
 - [ ] Executable runs without requiring Python/Node installation
-- [ ] Backend starts automatically when Pulse launches
+- [ ] Backend starts automatically when `Pulse.exe` launches
+- [ ] Icon displays correctly (`assets/pulse_icon_bg_020321.ico`)
 
 ---
 
