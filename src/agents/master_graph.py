@@ -49,6 +49,9 @@ from src.core.guardrails import truncate_output
 
 logger = logging.getLogger(__name__)
 
+# Global checkpointer singleton for interrupt/resume support
+_graph_checkpointer: Optional['MemorySaver'] = None
+
 
 # ============================================================================
 # G1: ERROR RECOVERY PATTERNS
@@ -1336,6 +1339,14 @@ async def tool_execution_node(state: MasterState) -> MasterState:
             # Check if this tool requires approval or is just sequential
             requires_approval = tool_name in APPROVAL_REQUIRED_TOOLS
 
+            # Special handling for manage_file_ops: only approval if NOT read/list/search
+            if tool_name == "manage_file_ops":
+                op = tool_args.get("operation", "read").lower()
+                if op in ["read", "list", "search"]:
+                    requires_approval = False
+                else:
+                    requires_approval = True
+
             if not requires_approval:
                 # Non-approval sequential tool: execute directly without approval gate
                 logger.info(f"[E1] Executing sequential tool (no approval): {tool_name}")
@@ -1435,6 +1446,45 @@ async def tool_execution_node(state: MasterState) -> MasterState:
                         "tool_call_id": tool_call_id,
                         "content": json.dumps({"success": False, "error": str(e)})
                     })
+                    state["messages"].append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": json.dumps({"success": False, "error": str(e)})
+                    })
+                    continue
+
+            elif tool_name == "manage_file_ops":
+                try:
+                    # Construct approval data for file operations
+                    op = tool_args.get("operation", "unknown")
+                    raw_path = tool_args.get("path", "unknown")
+                    content = tool_args.get("content", "")
+                    
+                    # Construct absolute path by joining project_root with relative path
+                    project_root = state.get("project_root", "")
+                    if raw_path and not (raw_path.startswith('/') or ':' in raw_path):
+                        # Relative path - prepend project_root
+                        import os
+                        abs_path = os.path.normpath(os.path.join(project_root, raw_path))
+                    else:
+                        abs_path = raw_path
+                    
+                    approval_data = {
+                        "operation": op,
+                        "path": abs_path,
+                        "content": content,
+                        "diff": None  # TODO: generate diff for update/create
+                    }
+                    
+                    # For file creation/updates, we might want to generate a diff if content is provided
+                    # But for now, just showing the content in the approval is sufficient
+                    
+                    approval_type = "file_write"
+                except Exception as e:
+                    logger.error(f"File op approval prep failed: {e}", exc_info=True)
+                    # Fallback to error
+                    error_output = ToolOutput(tool_name=tool_name, success=False, result="", error=str(e), timestamp=datetime.now().isoformat())
+                    state["tool_results"].append(error_output)
                     continue
 
             # Emit approval requested event
@@ -1520,6 +1570,21 @@ async def tool_execution_node(state: MasterState) -> MasterState:
                         timestamp=datetime.now().isoformat()
                     )
 
+            elif tool_name == "manage_file_ops":
+                try:
+                    # Execute the file operation directly after approval
+                    await emit_status(f"Executing {tool_args.get('operation', 'file op')}")
+                    tool_output = await execute_tool_real(tool_name, tool_args, state)
+                except Exception as e:
+                    logger.error(f"File op execution failed: {e}", exc_info=True)
+                    tool_output = ToolOutput(
+                        tool_name=tool_name,
+                        success=False,
+                        result="",
+                        error=f"File op execution failed: {str(e)}",
+                        timestamp=datetime.now().isoformat()
+                    )
+
             # Store result
             state["tool_results"].append(tool_output)
 
@@ -1568,6 +1633,12 @@ async def tool_execution_node(state: MasterState) -> MasterState:
         raise
 
     except Exception as e:
+        # Re-raise GraphInterrupt so the graph can pause for approval
+        from langgraph.errors import GraphInterrupt
+        if isinstance(e, GraphInterrupt):
+            logger.info("GraphInterrupt raised - graph will pause for approval")
+            raise
+        
         error_msg = f"Tool execution error: {str(e)}"
         state["tool_result"] = ToolOutput(
             tool_name=state.get("pending_tool_calls", [{}])[0].get("name", "unknown") if state.get("pending_tool_calls") else "unknown",
@@ -1682,14 +1753,19 @@ def create_master_graph(project_root: Optional[Path] = None) -> StateGraph:
         "tool_execution",
         should_continue,
         {
+            "tool_execution": "tool_execution",  # For interrupt resume
             "master_agent": "master_agent",
             END: END
         }
     )
 
     # Compile with checkpointer for interrupt support
-    checkpointer = MemorySaver()
-    app = workflow.compile(checkpointer=checkpointer)
+    # Use global singleton checkpointer so interrupt state persists across graph creations
+    global _graph_checkpointer
+    if _graph_checkpointer is None:
+        _graph_checkpointer = MemorySaver()
+    
+    app = workflow.compile(checkpointer=_graph_checkpointer)
 
     logger.info("Master graph compiled successfully")
     return app

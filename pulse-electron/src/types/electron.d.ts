@@ -76,6 +76,21 @@ export interface TerminalAPI {
   execute: (command: string) => Promise<string>;
 }
 
+export interface PtyAPI {
+  spawn: (options?: {
+    cwd?: string;
+    shell?: string;
+    cols?: number;
+    rows?: number;
+  }) => Promise<{ id: number; shell: string; cwd: string }>;
+  write: (id: number, data: string) => void;
+  resize: (id: number, cols: number, rows: number) => void;
+  kill: (id: number) => Promise<boolean>;
+  setCwd: (id: number, cwd: string) => Promise<boolean>;
+  onData: (callback: (id: number, data: string) => void) => () => void;
+  onExit: (callback: (id: number, exitCode: number) => void) => () => void;
+}
+
 export interface PulseAPI {
   fs: FileSystemAPI;
   workspace: WorkspaceAPI;
@@ -84,6 +99,7 @@ export interface PulseAPI {
   menu: MenuAPI;
   backend: BackendAPI;
   terminal: TerminalAPI;
+  pty: PtyAPI;
   platform: NodeJS.Platform;
 }
 
@@ -93,4 +109,4 @@ declare global {
   }
 }
 
-export {};
+export { };

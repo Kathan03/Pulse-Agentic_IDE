@@ -19,7 +19,18 @@ export function PatchApproval({ approval, onApprove, onDeny }: PatchApprovalProp
   const [feedback, setFeedback] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const data = approval.data as PatchApprovalData;
+  // Normalize data for both 'patch' and 'file_write' approval types
+  // 'patch' has: file_path, original_content, patched_content, patch_summary
+  // 'file_write' has: path, content, operation
+  const rawData = approval.data as Record<string, unknown>;
+
+  const data = {
+    file_path: (rawData.file_path as string) || (rawData.path as string) || 'unknown',
+    original_content: (rawData.original_content as string) || '',
+    patched_content: (rawData.patched_content as string) || (rawData.content as string) || '',
+    patch_summary: (rawData.patch_summary as string) || `${rawData.operation || 'modify'} file`,
+  };
+
   const fileName = data.file_path.split(/[\\/]/).pop() || data.file_path;
 
   // Check for conflict

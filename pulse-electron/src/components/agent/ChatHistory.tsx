@@ -96,6 +96,9 @@ export function ChatHistory() {
                 const data = await response.json();
                 clearMessages();
 
+                // Set the conversation ID so subsequent messages continue this conversation
+                useAgentStore.getState().setConversationId(conv.id);
+
                 // Add existing messages to store
                 if (data.messages && data.messages.length > 0) {
                     data.messages.forEach((msg: { role: string; content: string }) => {

@@ -106,6 +106,7 @@ interface AgentActions {
   updateStreamingContent: (chunk: string) => void;
   finalizeStreaming: () => void;
   clearMessages: () => void;
+  setConversationId: (conversationId: string | null) => void;
 
   // Vibe animation
   setVibeActive: (active: boolean) => void;
@@ -277,6 +278,10 @@ export const useAgentStore = create<AgentState & AgentActions>()(
         streamingContent: '',
         conversationId: null,
       });
+    },
+
+    setConversationId: (conversationId) => {
+      set({ conversationId });
     },
 
     // ========================================================================

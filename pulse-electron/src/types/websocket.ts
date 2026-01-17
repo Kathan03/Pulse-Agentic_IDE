@@ -74,9 +74,9 @@ export interface EventPayload {
 
 export interface ApprovalRequiredPayload {
   run_id: string;
-  approval_type: 'patch' | 'terminal';
+  approval_type: 'patch' | 'terminal' | 'file_write';
   description: string;
-  data: PatchApprovalData | TerminalApprovalData;
+  data: PatchApprovalData | TerminalApprovalData | FileWriteApprovalData;
 }
 
 export interface PatchApprovalData {
@@ -91,6 +91,13 @@ export interface TerminalApprovalData {
   working_directory: string;
   risk_level: 'low' | 'medium' | 'high';
   explanation: string;
+}
+
+export interface FileWriteApprovalData {
+  operation: string;
+  path: string;
+  content: string;
+  diff?: string;
 }
 
 export interface RunResultPayload {

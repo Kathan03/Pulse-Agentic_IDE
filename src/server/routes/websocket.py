@@ -42,6 +42,7 @@ from src.agents.runtime import (
     resume_with_approval,
     cancel_current_run,
     is_run_active,
+    get_current_run_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -248,17 +249,25 @@ async def execute_agent_run(
         request: The validated agent request.
     """
     session_manager = get_session_manager()
+    waiting_for_approval = False
 
     try:
-        # Run the agent
+        # Run the agent with the same run_id as the session
         result = await run_agent(
             user_input=request["user_input"],
             project_root=request["project_root"],
             max_iterations=request["max_iterations"],
             config={"thread_id": session.thread_id},
             conversation_id=request.get("conversation_id"),
-            mode=request.get("mode", "agent")
+            mode=request.get("mode", "agent"),
+            run_id=run_id
         )
+
+        # Check if waiting for approval (don't send run_result yet)
+        if result.get("waiting_for_approval"):
+            logger.info(f"Agent run {run_id} paused for approval, not sending run_result")
+            waiting_for_approval = True
+            return
 
         # Send result
         result_message = create_run_result_message(
@@ -280,8 +289,11 @@ async def execute_agent_run(
         await send_error(session.websocket, "run_failed", str(e))
 
     finally:
-        # Clear run state
-        await session_manager.clear_run(run_id)
+        # Clear run state ONLY if not waiting for approval
+        if not waiting_for_approval:
+            await session_manager.clear_run(run_id)
+        else:
+            logger.info(f"Session run {run_id} kept active for approval")
 
 
 async def handle_approval_response(
@@ -336,11 +348,16 @@ async def handle_approval_response(
         bridge.submit_approval(approved, feedback)
 
         # Resume the graph
-        # Note: This will continue the run in execute_agent_run's context
-        # The result will be sent via RUN_RESULT at the end of the run
+        # Note: Use runtime's run_id (may differ from session's)
+        runtime_run_id = get_current_run_id()
+        if not runtime_run_id:
+            await send_error(session.websocket, "no_active_run", "No active run to resume")
+            return
+            
         result = await resume_with_approval(
-            run_id=run_id,
+            run_id=runtime_run_id,
             approved=approved,
+            project_root=session.project_root,
             config={"thread_id": session.thread_id}
         )
 
@@ -352,6 +369,31 @@ async def handle_approval_response(
                 "approved": approved,
             }
         )
+
+        # Send the final RUN_RESULT with the agent's response
+        result_message = create_run_result_message(
+            run_id=run_id,  # Use session's run_id for frontend consistency
+            conversation_id=result.get("conversation_id", ""),
+            success=result.get("success", False),
+            response=result.get("response", ""),
+            files_touched=result.get("files_touched", []),
+            execution_log=result.get("execution_log", []),
+            cancelled=result.get("cancelled", False),
+            error=result.get("error")
+        )
+        await session.websocket.send_json(result_message.model_dump())
+        
+        # Send run_completed event
+        await bridge.send_event(
+            event_type="run_completed",
+            data={"run_id": run_id, "success": result.get("success", False)}
+        )
+        
+        # Clear session run state now that resume is complete
+        session_manager = get_session_manager()
+        await session_manager.clear_run(run_id)
+        
+        logger.info(f"Resume result sent for run {run_id}: success={result.get('success')}")
 
     except Exception as e:
         logger.error(f"Error handling approval response: {e}", exc_info=True)

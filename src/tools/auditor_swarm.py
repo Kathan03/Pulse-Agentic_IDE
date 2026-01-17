@@ -13,21 +13,150 @@ Context Containment:
 
 UI Responsiveness:
 - Blocking AutoGen execution is offloaded via asyncio.to_thread
+
+Multi-Provider Support:
+- Supports OpenAI, Anthropic Claude, and Google Gemini models
+- Provider is auto-detected from model name
 """
 
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
-from langchain_openai import ChatOpenAI
+# AutoGen imports - using pyautogen package
+try:
+    from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
+    AUTOGEN_AVAILABLE = True
+except ImportError:
+    try:
+        # Alternative import for newer versions
+        from pyautogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
+        AUTOGEN_AVAILABLE = True
+    except ImportError:
+        AUTOGEN_AVAILABLE = False
 
 from src.core.settings import get_settings_manager
 from src.core.prompts import AUTOGEN_AUDITOR_PROMPT
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# MULTI-PROVIDER LLM CONFIG FACTORY
+# ============================================================================
+
+def _get_provider(model: str) -> str:
+    """
+    Determine LLM provider from model name.
+    
+    Args:
+        model: Model identifier (e.g., "gpt-4o", "claude-sonnet-4.5", "gemini-3-pro")
+    
+    Returns:
+        Provider name: "openai", "anthropic", or "google"
+    """
+    model_lower = model.lower()
+    
+    if model_lower.startswith("gpt") or model_lower.startswith("o1") or model_lower.startswith("o3"):
+        return "openai"
+    elif model_lower.startswith("claude"):
+        return "anthropic"
+    elif model_lower.startswith("gemini"):
+        return "google"
+    else:
+        # Default to OpenAI for unknown models
+        logger.warning(f"Unknown model '{model}', defaulting to OpenAI provider")
+        return "openai"
+
+
+def _create_llm_config(model: str, settings: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Create AutoGen-compatible LLM config for the specified model.
+    
+    AutoGen uses a config_list format for multi-provider support.
+    
+    Args:
+        model: Model identifier (e.g., "gpt-4o", "claude-sonnet-4.5", "gemini-3-pro")
+        settings: Settings dict containing API keys
+    
+    Returns:
+        AutoGen LLM config dict, or None if initialization fails
+    """
+    provider = _get_provider(model)
+    api_keys = settings.get("api_keys", {})
+    
+    # Check for DEV_MODE (use .env instead of settings)
+    dev_mode = os.getenv("DEV_MODE", "false").lower() == "true"
+    
+    try:
+        if provider == "openai":
+            api_key = os.getenv("OPENAI_API_KEY") if dev_mode else api_keys.get("openai", "")
+            if not api_key:
+                api_key = os.getenv("OPENAI_API_KEY", "")  # Fallback to env
+            
+            if not api_key:
+                logger.error("OpenAI API key not configured")
+                return None
+            
+            logger.info(f"Creating OpenAI LLM config for AutoGen: {model}")
+            return {
+                "config_list": [{
+                    "model": model,
+                    "api_key": api_key,
+                }],
+                "temperature": 0.4,
+            }
+        
+        elif provider == "anthropic":
+            api_key = os.getenv("ANTHROPIC_API_KEY") if dev_mode else api_keys.get("anthropic", "")
+            if not api_key:
+                api_key = os.getenv("ANTHROPIC_API_KEY", "")  # Fallback to env
+            
+            if not api_key:
+                logger.error("Anthropic API key not configured")
+                return None
+            
+            logger.info(f"Creating Anthropic LLM config for AutoGen: {model}")
+            # AutoGen supports Anthropic via the anthropic API type
+            return {
+                "config_list": [{
+                    "model": model,
+                    "api_key": api_key,
+                    "api_type": "anthropic",
+                }],
+                "temperature": 0.4,
+            }
+        
+        elif provider == "google":
+            api_key = os.getenv("GOOGLE_API_KEY") if dev_mode else api_keys.get("google", "")
+            if not api_key:
+                api_key = os.getenv("GOOGLE_API_KEY", "")  # Fallback to env
+            
+            if not api_key:
+                logger.error("Google API key not configured")
+                return None
+            
+            logger.info(f"Creating Google LLM config for AutoGen: {model}")
+            # AutoGen supports Google Gemini via the google API type
+            return {
+                "config_list": [{
+                    "model": model,
+                    "api_key": api_key,
+                    "api_type": "google",
+                }],
+                "temperature": 0.4,
+            }
+        
+        else:
+            logger.error(f"Unknown provider: {provider}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Failed to create LLM config for {model}: {e}", exc_info=True)
+        return None
 
 
 # ============================================================================
@@ -272,23 +401,24 @@ def _run_autogen_sync(
     logger.info("Starting AutoGen debate (Stage B)")
 
     try:
+        # Check if AutoGen is available
+        if not AUTOGEN_AVAILABLE:
+            logger.error("AutoGen not installed. Run: pip install pyautogen")
+            stage_a_result["metadata"]["autogen_enabled"] = False
+            stage_a_result["metadata"]["error"] = "autogen_not_installed"
+            return stage_a_result
+        
         # Extract model settings
         model_name = settings.get("models", {}).get("autogen_auditor", "gpt-4o-mini")
-        api_key = settings.get("api_keys", {}).get("openai", "")
-
-        if not api_key:
-            logger.error("OpenAI API key not configured, falling back to Stage A only")
+        
+        # Create provider-agnostic LLM config
+        llm_config = _create_llm_config(model_name, settings)
+        
+        if llm_config is None:
+            logger.error("Failed to create LLM config, falling back to Stage A only")
             stage_a_result["metadata"]["autogen_enabled"] = False
-            stage_a_result["metadata"]["error"] = "missing_api_key"
+            stage_a_result["metadata"]["error"] = "llm_config_failed"
             return stage_a_result
-
-        # Build LLM config for AutoGen
-        llm_config = {
-            "model": model_name,
-            "api_key": api_key,
-            "max_tokens": MAX_TOKENS_PER_MESSAGE,
-            "temperature": 0.4
-        }
 
         # Create agents
         auditor = AssistantAgent(

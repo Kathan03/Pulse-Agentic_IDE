@@ -25,5 +25,5 @@ __pycache__/
 
 .pytest_cache/
 .pulse/
-.claude/
+# .claude/
 data/

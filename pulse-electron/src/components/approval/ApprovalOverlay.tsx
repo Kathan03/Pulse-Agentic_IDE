@@ -79,7 +79,7 @@ export function ApprovalOverlay() {
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             className="relative z-10 w-full max-w-2xl mx-4"
           >
-            {currentApproval.type === 'patch' ? (
+            {currentApproval.type === 'patch' || currentApproval.type === 'file_write' ? (
               <PatchApproval
                 approval={currentApproval}
                 onApprove={handleApprove}

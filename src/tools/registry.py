@@ -751,8 +751,8 @@ class ToolRegistry:
         """
         Wrapper for implement_feature tool (CrewAI).
 
-        This is an async tool that must be awaited by the caller.
-        The actual execution is offloaded to a background thread via asyncio.to_thread.
+        The implement_feature function is async, but invoke_tool is sync.
+        We need to run it synchronously using asyncio.run() in a new event loop.
 
         Args:
             args: Dict with keys: request, context (optional)
@@ -763,19 +763,26 @@ class ToolRegistry:
         from src.tools.builder_crew import implement_feature
         import asyncio
 
-        # implement_feature is async, so we need to run it in the event loop
-        # If called from async context, return coroutine directly
-        # If called from sync context, run in new event loop
+        # Always run in a new event loop since invoke_tool is synchronous
+        # and we need to await the async function
         try:
+            # Try to get current loop - if one exists, use run_coroutine_threadsafe
             loop = asyncio.get_running_loop()
-            # Running in async context, return awaitable
-            return implement_feature(
-                request=args["request"],
-                project_root=self.project_root,
-                context=args.get("context")
-            )
+            # We're in an async context but invoke_tool is sync
+            # Use asyncio.run in a thread to avoid nesting
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    implement_feature(
+                        request=args["request"],
+                        project_root=self.project_root,
+                        context=args.get("context")
+                    )
+                )
+                return future.result(timeout=300)  # 5 minute timeout
         except RuntimeError:
-            # No running loop, create new one (sync context)
+            # No running loop, we can use asyncio.run directly
             return asyncio.run(implement_feature(
                 request=args["request"],
                 project_root=self.project_root,
@@ -786,8 +793,8 @@ class ToolRegistry:
         """
         Wrapper for diagnose_project tool (AutoGen).
 
-        This is an async tool that must be awaited by the caller.
-        The actual execution is offloaded to a background thread via asyncio.to_thread.
+        The diagnose_project function is async, but invoke_tool is sync.
+        We need to run it synchronously using asyncio.run() in a new event loop.
 
         Args:
             args: Dict with keys: focus_area (optional), context (optional)
@@ -798,17 +805,25 @@ class ToolRegistry:
         from src.tools.auditor_swarm import diagnose_project
         import asyncio
 
-        # diagnose_project is async, so we need to run it in the event loop
+        # Always run in a new event loop since invoke_tool is synchronous
         try:
+            # Try to get current loop - if one exists, use thread executor
             loop = asyncio.get_running_loop()
-            # Running in async context, return awaitable
-            return diagnose_project(
-                focus_area=args.get("focus_area"),
-                project_root=self.project_root,
-                context=args.get("context")
-            )
+            # We're in an async context but invoke_tool is sync
+            # Use asyncio.run in a thread to avoid nesting
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    diagnose_project(
+                        focus_area=args.get("focus_area"),
+                        project_root=self.project_root,
+                        context=args.get("context")
+                    )
+                )
+                return future.result(timeout=300)  # 5 minute timeout
         except RuntimeError:
-            # No running loop, create new one (sync context)
+            # No running loop, we can use asyncio.run directly
             return asyncio.run(diagnose_project(
                 focus_area=args.get("focus_area"),
                 project_root=self.project_root,

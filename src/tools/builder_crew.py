@@ -12,15 +12,38 @@ Context Containment:
 
 UI Responsiveness:
 - Blocking CrewAI execution is offloaded via asyncio.to_thread
+
+Multi-Provider Support:
+- Supports OpenAI, Anthropic Claude, and Google Gemini models
+- Provider is auto-detected from model name
 """
 
 import asyncio
 import logging
+import os
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
 from crewai import Agent, Task, Crew, Process
-from langchain_openai import ChatOpenAI
+
+# LangChain LLM imports - lazy loaded to avoid import errors if not installed
+try:
+    from langchain_openai import ChatOpenAI
+    LANGCHAIN_OPENAI_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_OPENAI_AVAILABLE = False
+
+try:
+    from langchain_anthropic import ChatAnthropic
+    LANGCHAIN_ANTHROPIC_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_ANTHROPIC_AVAILABLE = False
+
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    LANGCHAIN_GOOGLE_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_GOOGLE_AVAILABLE = False
 
 from src.core.settings import get_settings_manager
 from src.core.prompts import CREW_PLANNER_PROMPT, CREW_CODER_PROMPT, CREW_REVIEWER_PROMPT
@@ -30,12 +53,120 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# MULTI-PROVIDER LLM FACTORY
+# ============================================================================
+
+def _get_provider(model: str) -> str:
+    """
+    Determine LLM provider from model name.
+    
+    Args:
+        model: Model identifier (e.g., "gpt-4o", "claude-sonnet-4.5", "gemini-3-pro")
+    
+    Returns:
+        Provider name: "openai", "anthropic", or "google"
+    """
+    model_lower = model.lower()
+    
+    if model_lower.startswith("gpt") or model_lower.startswith("o1") or model_lower.startswith("o3"):
+        return "openai"
+    elif model_lower.startswith("claude"):
+        return "anthropic"
+    elif model_lower.startswith("gemini"):
+        return "google"
+    else:
+        # Default to OpenAI for unknown models
+        logger.warning(f"Unknown model '{model}', defaulting to OpenAI provider")
+        return "openai"
+
+
+def _create_llm(model: str, settings: Dict[str, Any]) -> Optional[Any]:
+    """
+    Create a LangChain LLM instance for the specified model.
+    
+    Automatically selects the correct provider (OpenAI, Anthropic, Google)
+    based on the model name and configures it with the appropriate API key.
+    
+    Args:
+        model: Model identifier (e.g., "gpt-4o", "claude-sonnet-4.5", "gemini-3-pro")
+        settings: Settings dict containing API keys
+    
+    Returns:
+        LangChain LLM instance, or None if initialization fails
+    """
+    provider = _get_provider(model)
+    api_keys = settings.get("api_keys", {})
+    
+    # Check for DEV_MODE (use .env instead of settings)
+    dev_mode = os.getenv("DEV_MODE", "false").lower() == "true"
+    
+    try:
+        if provider == "openai":
+            if not LANGCHAIN_OPENAI_AVAILABLE:
+                logger.error("langchain_openai not installed. Run: pip install langchain-openai")
+                return None
+            
+            api_key = os.getenv("OPENAI_API_KEY") if dev_mode else api_keys.get("openai", "")
+            if not api_key:
+                api_key = os.getenv("OPENAI_API_KEY", "")  # Fallback to env
+            
+            if not api_key:
+                logger.error("OpenAI API key not configured")
+                return None
+            
+            logger.info(f"Creating OpenAI LLM: {model}")
+            # Note: Don't pass max_tokens - let the model use its defaults
+            # Different OpenAI models have different parameter requirements
+            return ChatOpenAI(model=model, api_key=api_key)
+        
+        elif provider == "anthropic":
+            if not LANGCHAIN_ANTHROPIC_AVAILABLE:
+                logger.error("langchain_anthropic not installed. Run: pip install langchain-anthropic")
+                return None
+            
+            api_key = os.getenv("ANTHROPIC_API_KEY") if dev_mode else api_keys.get("anthropic", "")
+            if not api_key:
+                api_key = os.getenv("ANTHROPIC_API_KEY", "")  # Fallback to env
+            
+            if not api_key:
+                logger.error("Anthropic API key not configured")
+                return None
+            
+            logger.info(f"Creating Anthropic LLM: {model}")
+            return ChatAnthropic(model=model, api_key=api_key)
+        
+        elif provider == "google":
+            if not LANGCHAIN_GOOGLE_AVAILABLE:
+                logger.error("langchain_google_genai not installed. Run: pip install langchain-google-genai")
+                return None
+            
+            api_key = os.getenv("GOOGLE_API_KEY") if dev_mode else api_keys.get("google", "")
+            if not api_key:
+                api_key = os.getenv("GOOGLE_API_KEY", "")  # Fallback to env
+            
+            if not api_key:
+                logger.error("Google API key not configured")
+                return None
+            
+            logger.info(f"Creating Google Gemini LLM: {model}")
+            return ChatGoogleGenerativeAI(model=model, google_api_key=api_key)
+        
+        else:
+            logger.error(f"Unknown provider: {provider}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Failed to create LLM for {model}: {e}", exc_info=True)
+        return None
+
+
+# ============================================================================
 # BUDGET CONTROLS
 # ============================================================================
 
 # Safe defaults for bounded execution
 MAX_CREW_ITERATIONS = 3  # Maximum rounds for crew execution
-MAX_TOKENS_PER_AGENT = 4000  # Token limit per agent response
+MAX_TOKENS_PER_AGENT = 4000  # Token limit per agent response (not currently used)
 
 
 # ============================================================================
@@ -135,31 +266,19 @@ def _run_crew_sync(
         # Extract model settings
         cheap_model = settings.get("models", {}).get("autogen_auditor", "gpt-4o-mini")
         master_model = settings.get("models", {}).get("crew_coder", "gpt-4o")
-        api_key = settings.get("api_keys", {}).get("openai", "")
-
-        if not api_key:
-            logger.error("OpenAI API key not configured")
+        
+        # Initialize LLMs using provider-agnostic factory
+        # This supports OpenAI, Anthropic Claude, and Google Gemini models
+        cheap_llm = _create_llm(cheap_model, settings)
+        master_llm = _create_llm(master_model, settings)
+        
+        if cheap_llm is None or master_llm is None:
             return {
                 "patch_plans": [],
-                "summary": "Error: OpenAI API key not configured in settings.",
+                "summary": "Error: Failed to initialize LLM. Check API key configuration in settings.",
                 "verification_steps": [],
-                "metadata": {"error": "missing_api_key"}
+                "metadata": {"error": "llm_init_failed"}
             }
-
-        # Initialize LLMs with budget controls
-        cheap_llm = ChatOpenAI(
-            model=cheap_model,
-            api_key=api_key,
-            max_tokens=MAX_TOKENS_PER_AGENT,
-            temperature=0.3
-        )
-
-        master_llm = ChatOpenAI(
-            model=master_model,
-            api_key=api_key,
-            max_tokens=MAX_TOKENS_PER_AGENT,
-            temperature=0.2
-        )
 
         # Build context string for agents
         context_str = _build_context_string(project_root, context)
@@ -298,11 +417,23 @@ def _build_context_string(project_root: Path, context: Dict[str, Any]) -> str:
     Args:
         project_root: Project root directory.
         context: Context dict with workspace_summary, active_files, etc.
+                 May also be a string if LLM passes raw context.
 
     Returns:
         Formatted context string for agent prompts.
     """
     parts = [f"Project Root: {project_root}"]
+
+    # Handle case where context is passed as a string instead of dict
+    if isinstance(context, str):
+        # LLM might pass a raw string as context - just append it
+        if context.strip():
+            parts.append(f"\nContext:\n{context}")
+        return "\n".join(parts)
+    
+    # Handle None case
+    if not context:
+        return "\n".join(parts)
 
     if workspace_summary := context.get("workspace_summary"):
         parts.append(f"\nWorkspace Summary:\n{workspace_summary}")

@@ -56,6 +56,10 @@ _current_run_id: Optional[str] = None
 _run_lock = asyncio.Lock()
 _cancellation_event: Optional[asyncio.Event] = None
 
+# Interrupt/approval state
+_waiting_for_approval: bool = False
+_current_project_root: Optional[str] = None
+
 # Conversation persistence (Task F1)
 _current_conversation_id: Optional[str] = None
 _current_conversation_db: Optional[ConversationDB] = None
@@ -172,7 +176,8 @@ async def run_agent(
     max_iterations: int = 10,
     config: Optional[Dict[str, Any]] = None,
     conversation_id: Optional[str] = None,
-    mode: str = "agent"
+    mode: str = "agent",
+    run_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Run the Master Agent for a single user request.
@@ -218,7 +223,7 @@ async def run_agent(
         ... )
         >>> print(result["response"])
     """
-    global _current_run_id, _cancellation_event, _current_conversation_id, _current_conversation_db
+    global _current_run_id, _cancellation_event, _current_conversation_id, _current_conversation_db, _waiting_for_approval, _current_project_root
 
     # ========================================================================
     # SINGLE RUN ENFORCEMENT
@@ -231,8 +236,9 @@ async def run_agent(
                 "Call cancel_current_run() first."
             )
 
-        # Generate unique run ID
-        run_id = str(uuid.uuid4())
+        # Use provided run_id or generate unique run ID
+        if run_id is None:
+            run_id = str(uuid.uuid4())
         _current_run_id = run_id
         _cancellation_event = asyncio.Event()
 
@@ -259,6 +265,9 @@ async def run_agent(
         # Ensure workspace is initialized (.pulse/ directory)
         workspace_mgr = ensure_workspace_initialized(str(project_root_path))
         logger.info(f"Workspace initialized: {project_root_path}")
+        
+        # Store project root for resume
+        _current_project_root = str(project_root_path)
 
         # ====================================================================
         # CONVERSATION PERSISTENCE (Task F1)
@@ -271,6 +280,30 @@ async def run_agent(
             title=generate_conversation_title(user_input) if not conversation_id else None
         )
         logger.info(f"Conversation: {_current_conversation_id}")
+
+        # Load previous messages from conversation history for context
+        previous_messages = []
+        if conversation_id and _current_conversation_db:
+            # This is a resumed conversation - load history
+            try:
+                # Load up to 20 recent messages for context
+                # Note: get_messages returns ordered list (oldest first)
+                db_messages = _current_conversation_db.get_messages(
+                    conversation_id=_current_conversation_id,
+                    limit=20
+                )
+                for msg in db_messages:
+                    # Map DB schema to message schema
+                    role = msg.get("role")
+                    content = msg.get("content")
+                    if role and content:
+                        previous_messages.append({
+                            "role": role,
+                            "content": content
+                        })
+                logger.info(f"Loaded {len(previous_messages)} previous messages from conversation")
+            except Exception as e:
+                logger.error(f"Failed to load conversation history: {e}")
 
         # Save user's message to conversation history
         _current_conversation_db.save_message(
@@ -321,6 +354,13 @@ async def run_agent(
             mode=mode
         )
 
+        # Prepend previous messages to state (new message already added by create_initial_master_state)
+        if previous_messages:
+            # We want: [old_msg_1, old_msg_2, ..., current_msg]
+            # initial_state["messages"] currently has [current_msg]
+            initial_state["messages"] = previous_messages + initial_state["messages"]
+            logger.info(f"Final message count: {len(initial_state['messages'])}")
+
         logger.info("Initial MasterState created")
 
         # ====================================================================
@@ -328,7 +368,7 @@ async def run_agent(
         # ====================================================================
 
         # Create graph (with checkpointer for interrupt support)
-        graph = create_master_graph()
+        graph = create_master_graph(project_root=project_root_path)
 
         # Execute graph with config
         thread_config = {
@@ -368,6 +408,32 @@ async def run_agent(
             final_state = initial_state
 
         logger.info("Graph execution complete")
+        
+        # ====================================================================
+        # CHECK FOR INTERRUPT (waiting for approval)
+        # ====================================================================
+        # When graph is paused for approval, we need to wait, not complete
+        try:
+            graph_state = graph.get_state(thread_config)
+            if graph_state and hasattr(graph_state, 'next') and graph_state.next:
+                # Graph has more nodes to execute - it's paused (interrupted)
+                logger.info(f"Graph is paused at: {graph_state.next}, waiting for approval")
+                _waiting_for_approval = True
+                
+                # Return waiting status - don't cleanup, don't send run_result
+                return {
+                    "run_id": run_id,
+                    "conversation_id": _current_conversation_id,
+                    "success": False,
+                    "response": "",
+                    "files_touched": [],
+                    "execution_log": [],
+                    "cancelled": False,
+                    "error": None,
+                    "waiting_for_approval": True  # Special flag
+                }
+        except Exception as e:
+            logger.warning(f"Could not check graph state: {e}")
 
         # ====================================================================
         # RESULT CONSTRUCTION
@@ -455,13 +521,17 @@ async def run_agent(
         # ====================================================================
         # CLEANUP: Release global lock and conversation state
         # ====================================================================
-
-        async with _run_lock:
-            _current_run_id = None
-            _cancellation_event = None
-            _current_conversation_id = None
-            _current_conversation_db = None
-            logger.info(f"Run {run_id} cleanup complete, lock released")
+        # Skip cleanup if waiting for approval - run needs to stay active
+        if not _waiting_for_approval:
+            async with _run_lock:
+                _current_run_id = None
+                _cancellation_event = None
+                _current_conversation_id = None
+                _current_conversation_db = None
+                _current_project_root = None
+                logger.info(f"Run {run_id} cleanup complete, lock released")
+        else:
+            logger.info(f"Run {run_id} paused for approval, skipping cleanup")
 
 
 # ============================================================================
@@ -471,6 +541,7 @@ async def run_agent(
 async def resume_with_approval(
     run_id: str,
     approved: bool,
+    project_root: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
@@ -481,6 +552,7 @@ async def resume_with_approval(
     Args:
         run_id: Run ID to resume (must match current active run).
         approved: User's approval decision (True = approved, False = denied).
+        project_root: Project root directory for tool execution.
         config: Optional config (must include thread_id matching run_id).
 
     Returns:
@@ -493,15 +565,22 @@ async def resume_with_approval(
         >>> # User clicks "Approve" in patch preview modal
         >>> result = await resume_with_approval(run_id, approved=True)
     """
+    global _waiting_for_approval, _current_run_id, _cancellation_event, _current_conversation_id, _current_conversation_db, _current_project_root
+    
     if run_id != _current_run_id:
         raise ValueError(
             f"Cannot resume run {run_id}: Current active run is {_current_run_id}"
         )
 
     logger.info(f"Resuming run {run_id} with approval={approved}")
+    
+    # Reset waiting flag
+    _waiting_for_approval = False
 
-    # Create graph
-    graph = create_master_graph()
+    # Use stored project_root if not provided
+    effective_project_root = project_root or _current_project_root
+    project_root_path = Path(effective_project_root) if effective_project_root else None
+    graph = create_master_graph(project_root=project_root_path)
 
     # Resume with Command
     from langgraph.types import Command
@@ -551,6 +630,16 @@ async def resume_with_approval(
     }
 
     logger.info(f"Resume complete for run {run_id}")
+    
+    # Cleanup after resume
+    async with _run_lock:
+        _current_run_id = None
+        _cancellation_event = None
+        _current_conversation_id = None
+        _current_conversation_db = None
+        _current_project_root = None
+        logger.info(f"Run {run_id} cleanup complete after resume")
+    
     return result
 
 

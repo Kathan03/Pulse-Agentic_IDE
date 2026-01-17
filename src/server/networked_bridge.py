@@ -302,7 +302,11 @@ class NetworkedBridge:
 
     def has_pending_approval(self) -> bool:
         """Check if there's a pending approval waiting."""
-        return self._approval_future is not None and not self._approval_future.done()
+        # Check session.pending_approval (set by _handle_approval_requested)
+        # OR _approval_future (for legacy wait_for_approval pattern)
+        return self.session.pending_approval is not None or (
+            self._approval_future is not None and not self._approval_future.done()
+        )
 
     # ========================================================================
     # MESSAGE SENDING

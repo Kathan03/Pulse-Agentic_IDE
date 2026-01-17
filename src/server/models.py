@@ -160,7 +160,7 @@ class ApprovalRequiredPayload(BaseModel):
     """
 
     run_id: str = Field(..., description="Run ID requiring approval")
-    approval_type: Literal["patch", "terminal"] = Field(
+    approval_type: Literal["patch", "terminal", "file_write"] = Field(
         ..., description="Type of approval needed"
     )
     description: str = Field(
@@ -233,7 +233,7 @@ def create_event_message(event_type: str, data: Dict[str, Any]) -> WSMessage:
 
 def create_approval_required_message(
     run_id: str,
-    approval_type: Literal["patch", "terminal"],
+    approval_type: Literal["patch", "terminal", "file_write"],
     data: Dict[str, Any],
     description: str = ""
 ) -> WSMessage:

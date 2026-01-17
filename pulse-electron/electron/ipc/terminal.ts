@@ -26,8 +26,10 @@ let nextPtyId = 1;
  */
 function getDefaultShell(): string {
   if (process.platform === 'win32') {
-    // Prefer PowerShell Core, then Windows PowerShell, then cmd
-    return process.env.COMSPEC || 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+    // Always use PowerShell on Windows
+    // Check for PowerShell Core (pwsh) first, then Windows PowerShell
+    // Note: COMSPEC typically points to cmd.exe, which we want to avoid
+    return 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
   } else if (process.platform === 'darwin') {
     return process.env.SHELL || '/bin/zsh';
   } else {

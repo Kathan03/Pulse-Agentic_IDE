@@ -130,7 +130,7 @@ class SettingsManager:
         Get API key for a specific provider.
 
         Args:
-            provider: Provider name ("openai" or "anthropic").
+            provider: Provider name ("openai", "anthropic", or "google").
 
         Returns:
             API key string or None if not configured.

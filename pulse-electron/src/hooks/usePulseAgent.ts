@@ -24,6 +24,16 @@ import type {
 
 const DEFAULT_WS_PORT = 8765;
 
+// ============================================================================
+// MODULE-LEVEL SINGLETON for shared WebSocket connection
+// This ensures all usePulseAgent instances share the same connection
+// ============================================================================
+let sharedWsRef: PulseWebSocket | null = null;
+let sharedPingInterval: NodeJS.Timeout | null = null;
+let sharedPortRef = DEFAULT_WS_PORT;
+let sharedIsConnecting = false;
+let sharedHasConnectedOnce = false;
+
 export interface UsePulseAgentOptions {
   port?: number;
   autoConnect?: boolean;
@@ -51,13 +61,7 @@ export interface UsePulseAgentReturn {
 export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgentReturn {
   const { autoConnect = true } = options;
 
-  const wsRef = useRef<PulseWebSocket | null>(null);
-  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const portRef = useRef<number>(DEFAULT_WS_PORT);
-  const isConnectingRef = useRef<boolean>(false); // Lock to prevent multiple simultaneous connections
-  const hasConnectedOnceRef = useRef<boolean>(false); // Track if we've ever connected
-
-  // Stores
+  // Use module-level refs for connection state (shared across all instances)
   const {
     isConnected,
     connectionError,
@@ -181,8 +185,13 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
           break;
 
         case 'run_started':
-          setVibeActive(true);
-          setVibeCategory('thinking');
+          // Update currentRunId from backend's actual run_id
+          if (data.run_id) {
+            startRun(data.run_id as string);
+          } else {
+            setVibeActive(true);
+            setVibeCategory('thinking');
+          }
           break;
 
         case 'run_completed':
@@ -193,7 +202,7 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
           console.log('[usePulseAgent] Unknown event type:', event_type);
       }
     },
-    [addToolCall, updateToolResult, updateStreamingContent, setVibeCategory, setVibeWord, cancelRunState, setVibeActive]
+    [addToolCall, updateToolResult, updateStreamingContent, setVibeCategory, setVibeWord, cancelRunState, setVibeActive, startRun]
   );
 
   const handleApprovalRequired = useCallback(
@@ -227,6 +236,48 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
 
         // Enter diff preview
         enterDiffPreview(patchData.file_path);
+      } else if (payload.approval_type === 'file_write') {
+        // Handle file_write similar to patch (preview content)
+        const fileData = payload.data as { operation: string; path: string; content: string; diff?: string };
+
+        // Construct absolute path by joining projectRoot with relative path
+        // If path is already absolute (starts with / or contains :), use as-is
+        const isAbsolute = fileData.path.startsWith('/') || fileData.path.includes(':');
+        const fullPath = isAbsolute
+          ? fileData.path
+          : (projectRoot ? `${projectRoot}/${fileData.path}`.replace(/\\/g, '/') : fileData.path);
+
+        console.log('[usePulseAgent] file_write approval - fullPath:', fullPath, 'projectRoot:', projectRoot);
+
+        // For file_write, we might be creating a new file or updating one
+        let originalContent = '';
+        try {
+          // Try to read existing file content if it exists
+          originalContent = await window.pulseAPI.fs.readFile(fullPath);
+        } catch (e) {
+          // File likely doesn't exist, which is fine for creation
+          console.log('[usePulseAgent] File does not exist (likely creation):', fullPath);
+          originalContent = '';
+        }
+
+        // Open/Ensure file tab exists (use the fullPath)
+        if (!files.has(fullPath)) {
+          openFile(fullPath, originalContent);
+        }
+
+        // Add pending patch (reusing patch mechanism for diff view)
+        addPendingPatch({
+          id: crypto.randomUUID(),
+          runId: payload.run_id,
+          filePath: fullPath,
+          originalContent: originalContent,
+          patchedContent: fileData.content,
+          patchSummary: `${fileData.operation} file: ${fileData.path}`,
+          timestamp: Date.now(),
+        });
+
+        // Enter diff preview
+        enterDiffPreview(fullPath);
       }
 
       // Add to approval queue
@@ -237,7 +288,7 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
         data: payload.data,
       });
     },
-    [setRunStatus, setVibeActive, files, openFile, addPendingPatch, enterDiffPreview, addApproval]
+    [setRunStatus, setVibeActive, files, openFile, addPendingPatch, enterDiffPreview, addApproval, projectRoot]
   );
 
   const handleRunResult = useCallback(
@@ -273,32 +324,32 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
 
   const handleStateChange = useCallback(
     (state: WebSocketState) => {
-      console.log('[usePulseAgent] State change:', state, 'hasConnectedOnce:', hasConnectedOnceRef.current);
+      console.log('[usePulseAgent] State change:', state, 'hasConnectedOnce:', sharedHasConnectedOnce);
       switch (state) {
         case 'connecting':
           // Only set to disconnected if we haven't successfully connected yet
           // This prevents a new connection attempt from resetting an existing connection
-          if (!hasConnectedOnceRef.current) {
+          if (!sharedHasConnectedOnce) {
             setConnectionError(null);
           }
           break;
         case 'connected':
-          hasConnectedOnceRef.current = true;
-          isConnectingRef.current = false;
+          sharedHasConnectedOnce = true;
+          sharedIsConnecting = false;
           setConnected(true);
           setConnectionError(null);
           console.log('[usePulseAgent] Successfully connected, setting isConnected=true');
           break;
         case 'disconnected':
           // Only update if this is our active WebSocket
-          if (!isConnectingRef.current) {
-            hasConnectedOnceRef.current = false;
+          if (!sharedIsConnecting) {
+            sharedHasConnectedOnce = false;
             setConnected(false);
           }
           break;
         case 'error':
-          isConnectingRef.current = false;
-          if (!hasConnectedOnceRef.current) {
+          sharedIsConnecting = false;
+          if (!sharedHasConnectedOnce) {
             setConnected(false);
             setConnectionError('Connection failed');
           }
@@ -321,85 +372,85 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
 
   const connect = useCallback(async () => {
     // Prevent multiple simultaneous connection attempts
-    if (wsRef.current?.isConnected()) {
+    if (sharedWsRef?.isConnected()) {
       console.log('[usePulseAgent] Already connected, skipping');
       return;
     }
 
     // Check if WebSocket is already in CONNECTING state
-    if (wsRef.current?.getReadyState() === WebSocket.CONNECTING) {
+    if (sharedWsRef?.getReadyState() === WebSocket.CONNECTING) {
       console.log('[usePulseAgent] WebSocket already connecting, waiting...');
       return;
     }
 
-    if (isConnectingRef.current) {
+    if (sharedIsConnecting) {
       console.log('[usePulseAgent] Already connecting (flag), skipping');
       return;
     }
 
-    if (hasConnectedOnceRef.current) {
+    if (sharedHasConnectedOnce) {
       console.log('[usePulseAgent] Already connected once, skipping duplicate attempt');
       return;
     }
 
-    isConnectingRef.current = true;
+    sharedIsConnecting = true;
     console.log('[usePulseAgent] Starting connection...');
 
     // Fetch dynamic port from backend (in production) or use default
     try {
       if (window.pulseAPI?.backend?.getPort) {
         const port = await window.pulseAPI.backend.getPort();
-        portRef.current = port;
+        sharedPortRef = port;
         console.log('[usePulseAgent] Using backend port:', port);
       }
     } catch (error) {
       console.warn('[usePulseAgent] Failed to get backend port, using default:', error);
     }
 
-    const wsUrl = `ws://127.0.0.1:${portRef.current}/ws`;
+    const wsUrl = `ws://127.0.0.1:${sharedPortRef}/ws`;
     console.log('[usePulseAgent] Connecting to:', wsUrl);
 
     // Clean up any existing WebSocket
-    if (wsRef.current) {
-      wsRef.current.disconnect();
+    if (sharedWsRef) {
+      sharedWsRef.disconnect();
     }
 
-    wsRef.current = new PulseWebSocket(wsUrl, {
+    sharedWsRef = new PulseWebSocket(wsUrl, {
       onStateChange: handleStateChange,
       onMessage: handleMessage,
       onError: handleWsError,
     });
 
     try {
-      await wsRef.current.connect();
+      await sharedWsRef.connect();
 
       // Start ping interval only if not already started
-      if (!pingIntervalRef.current) {
-        pingIntervalRef.current = setInterval(() => {
-          wsRef.current?.ping();
+      if (!sharedPingInterval) {
+        sharedPingInterval = setInterval(() => {
+          sharedWsRef?.ping();
         }, 30000);
       }
     } catch (error) {
-      isConnectingRef.current = false;
+      sharedIsConnecting = false;
       throw error;
     }
   }, [handleStateChange, handleMessage, handleWsError]);
 
   const disconnect = useCallback(() => {
     console.log('[usePulseAgent] Disconnecting...');
-    if (pingIntervalRef.current) {
-      clearInterval(pingIntervalRef.current);
-      pingIntervalRef.current = null;
+    if (sharedPingInterval) {
+      clearInterval(sharedPingInterval);
+      sharedPingInterval = null;
     }
-    wsRef.current?.disconnect();
-    wsRef.current = null;
-    isConnectingRef.current = false;
-    hasConnectedOnceRef.current = false;
+    sharedWsRef?.disconnect();
+    sharedWsRef = null;
+    sharedIsConnecting = false;
+    sharedHasConnectedOnce = false;
   }, []);
 
   const sendMessage = useCallback(
     (userInput: string) => {
-      if (!wsRef.current?.isConnected() || !projectRoot) {
+      if (!sharedWsRef?.isConnected() || !projectRoot) {
         console.warn('Cannot send message: not connected or no project root');
         return;
       }
@@ -414,23 +465,23 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
         max_iterations: 10,
       };
 
-      wsRef.current.sendAgentRequest(payload);
+      sharedWsRef.sendAgentRequest(payload);
     },
     [projectRoot, mode, startRun]
   );
 
   const cancelRun = useCallback(() => {
-    if (!wsRef.current?.isConnected() || !currentRunId) return;
+    if (!sharedWsRef?.isConnected() || !currentRunId) return;
 
-    wsRef.current.sendCancelRequest({ run_id: currentRunId });
+    sharedWsRef.sendCancelRequest({ run_id: currentRunId });
     cancelRunState();
   }, [currentRunId, cancelRunState]);
 
   const approveAction = useCallback(
     (feedback?: string) => {
-      if (!wsRef.current?.isConnected() || !currentRunId) return;
+      if (!sharedWsRef?.isConnected() || !currentRunId) return;
 
-      wsRef.current.sendApprovalResponse({
+      sharedWsRef.sendApprovalResponse({
         run_id: currentRunId,
         approved: true,
         feedback: feedback || '',
@@ -444,9 +495,9 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
 
   const denyAction = useCallback(
     (feedback?: string) => {
-      if (!wsRef.current?.isConnected() || !currentRunId) return;
+      if (!sharedWsRef?.isConnected() || !currentRunId) return;
 
-      wsRef.current.sendApprovalResponse({
+      sharedWsRef.sendApprovalResponse({
         run_id: currentRunId,
         approved: false,
         feedback: feedback || '',
@@ -510,9 +561,12 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
                 role: 'assistant',
                 content: 'Cannot send message: No folder is open. Please open a folder first using File > Open Folder (Ctrl+O).',
               });
+            } else if (storeState.currentRunId) {
+              console.warn('[usePulseAgent] Cannot send message: A run is already active:', storeState.currentRunId);
+              // Don't send duplicate requests while a run is in progress
             } else {
               // Guard: Check wsRef is available before sending
-              if (!wsRef.current) {
+              if (!sharedWsRef) {
                 console.error('[usePulseAgent] Cannot send: wsRef is null despite isConnected=true');
                 return;
               }
@@ -533,7 +587,7 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
               };
 
               console.log('[usePulseAgent] Payload:', payload);
-              wsRef.current.sendAgentRequest(payload);
+              sharedWsRef.sendAgentRequest(payload);
             }
           }
         }

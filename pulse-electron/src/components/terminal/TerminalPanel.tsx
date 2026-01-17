@@ -29,6 +29,43 @@ export function TerminalPanel() {
   const [sessions, setSessions] = useState<{ id: number; name: string }[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const sessionCounterRef = useRef(0);
+  const listenersRegistered = useRef(false);
+
+  // Register PTY IPC listeners ONCE at component mount
+  useEffect(() => {
+    // In React Strict Mode, effects run twice. We need to handle this properly.
+    // The ref prevents double-registration during the same mount cycle,
+    // but we must reset it in cleanup to allow registration on subsequent mounts.
+    if (listenersRegistered.current) return;
+    listenersRegistered.current = true;
+
+    console.log('[TerminalPanel] Registering PTY IPC listeners');
+
+    // Subscribe to PTY output for ALL sessions
+    const cleanupData = window.pulseAPI.pty.onData((ptyId: number, data: string) => {
+      const session = sessionsRef.current.get(ptyId);
+      if (session) {
+        session.terminal.write(data);
+      }
+    });
+
+    // Subscribe to PTY exit for ALL sessions
+    const cleanupExit = window.pulseAPI.pty.onExit((ptyId: number, exitCode: number) => {
+      const session = sessionsRef.current.get(ptyId);
+      if (session) {
+        session.terminal.writeln(`\r\n\x1b[33mProcess exited with code ${exitCode}\x1b[0m`);
+        session.isConnected = false;
+      }
+    });
+
+    return () => {
+      console.log('[TerminalPanel] Cleaning up PTY IPC listeners');
+      cleanupData();
+      cleanupExit();
+      // Reset the ref so listeners can be registered again if component remounts
+      listenersRegistered.current = false;
+    };
+  }, []);
 
   const { terminalHeight, setTerminalHeight, terminalVisible } = useUIStore();
   const { projectRoot } = useWorkspaceStore();
@@ -131,22 +168,11 @@ export function TerminalPanel() {
         window.pulseAPI.pty.resize(id, cols, rows);
       });
 
-      // Subscribe to PTY output
-      window.pulseAPI.pty.onData((ptyId: number, data: string) => {
-        const sess = sessionsRef.current.get(ptyId);
-        if (sess) {
-          sess.terminal.write(data);
-        }
-      });
+      // Subscribe to PTY output - MOVED TO GLOBAL LISTENER
+      // window.pulseAPI.pty.onData((ptyId: number, data: string) => { ... });
 
-      // Subscribe to PTY exit
-      window.pulseAPI.pty.onExit((ptyId: number, exitCode: number) => {
-        const sess = sessionsRef.current.get(ptyId);
-        if (sess) {
-          sess.terminal.writeln(`\r\n\x1b[33mProcess exited with code ${exitCode}\x1b[0m`);
-          sess.isConnected = false;
-        }
-      });
+      // Subscribe to PTY exit - MOVED TO GLOBAL LISTENER
+      // window.pulseAPI.pty.onExit((ptyId: number, exitCode: number) => { ... });
 
       // Update state
       setSessions(prev => [...prev, { id, name: sessionName }]);
@@ -324,8 +350,8 @@ export function TerminalPanel() {
             <div
               key={session.id}
               className={`group flex items-center px-2 py-0.5 rounded text-xs cursor-pointer transition-colors ${session.id === activeSessionId
-                  ? 'bg-pulse-bg text-pulse-fg'
-                  : 'text-pulse-fg-muted hover:bg-pulse-bg-tertiary hover:text-pulse-fg'
+                ? 'bg-pulse-bg text-pulse-fg'
+                : 'text-pulse-fg-muted hover:bg-pulse-bg-tertiary hover:text-pulse-fg'
                 }`}
               onClick={() => switchToSession(session.id)}
             >

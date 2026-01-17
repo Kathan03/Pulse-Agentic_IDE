@@ -14,7 +14,7 @@ import type {
 // Approval Types
 // ============================================================================
 
-export type ApprovalType = 'patch' | 'terminal';
+export type ApprovalType = 'patch' | 'terminal' | 'file_write';
 
 export interface BaseApproval {
   id: string;
@@ -34,7 +34,17 @@ export interface TerminalApproval extends BaseApproval {
   data: TerminalApprovalData;
 }
 
-export type Approval = PatchApproval | TerminalApproval;
+export interface FileWriteApproval extends BaseApproval {
+  type: 'file_write';
+  data: {
+    operation: string;
+    path: string;
+    content: string;
+    diff?: string;
+  };
+}
+
+export type Approval = PatchApproval | TerminalApproval | FileWriteApproval;
 
 // ============================================================================
 // Store State

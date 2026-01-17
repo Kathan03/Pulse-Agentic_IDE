@@ -84,6 +84,7 @@ def analyze_risk(command: str) -> Dict[str, str]:
         ("rm -r", "Recursive delete operation"),
         ("del /s", "Recursive delete (Windows)"),
         ("rmdir /s", "Recursive directory delete (Windows)"),
+        ("rmdir /q", "Quiet directory delete (Windows)"),
         ("format ", "Disk format command"),
         ("mkfs", "Filesystem creation"),
 
@@ -131,6 +132,11 @@ def analyze_risk(command: str) -> Dict[str, str]:
         ("mv ", "File move/rename"),
         ("move ", "File move (Windows)"),
         ("ren ", "File rename (Windows)"),
+
+        # Directory operations
+        ("rmdir ", "Directory deletion"),
+        ("rd ", "Directory removal (Windows)"),
+        ("rm -d", "Directory removal"),
 
         # Git operations
         ("git push", "Git push to remote"),
