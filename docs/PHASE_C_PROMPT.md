@@ -6,7 +6,7 @@ Copy and paste this entire prompt into a new chat session to implement Phase C.
 
 ## Context: What is Pulse?
 
-**Pulse** is an Agentic AI IDE specifically designed for PLC (Programmable Logic Controller) coding. It combines the power of large language models with a modern Electron-based UI to provide an intelligent coding assistant that can:
+**Pulse** is an Agentic AI IDE specifically designed for PLC (Programmable Logic Controller) coding, but also supports general programming tasks. It combines the power of large language models with a modern Electron-based UI to provide an intelligent coding assistant that can:
 
 - **Understand natural language requests** and translate them into code changes
 - **Execute terminal commands** with user approval
