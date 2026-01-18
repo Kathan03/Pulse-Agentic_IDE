@@ -81,7 +81,7 @@ def get_chroma_data_options():
         print(f"  Bundling ChromaDB models from: {CHROMA_CACHE_DIR}")
     else:
         print(f"  Warning: ChromaDB model cache not found at {CHROMA_CACHE_DIR}")
-        print(f"  Run 'python scripts/download_chromadb_models.py' first!")
+        print("  Run 'python scripts/download_chromadb_models.py' first!")
     
     return data_options
 
@@ -117,7 +117,7 @@ def build_backend():
         str(entry_point)
     ]
 
-    print(f"\nRunning PyInstaller...")
+    print("\nRunning PyInstaller...")
 
     try:
         subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)

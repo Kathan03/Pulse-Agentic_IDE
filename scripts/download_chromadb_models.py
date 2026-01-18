@@ -12,7 +12,7 @@ After running, the models will be in ~/.cache/chroma/onnx_models/
 and the build script will bundle them with the executable.
 """
 
-import os
+
 import sys
 from pathlib import Path
 
@@ -55,7 +55,7 @@ def download_models():
     if cache_dir.exists():
         model_files = list(cache_dir.rglob("*"))
         total_size = sum(f.stat().st_size for f in model_files if f.is_file())
-        print(f"\nModel files downloaded:")
+        print("\nModel files downloaded:")
         print(f"  Location: {cache_dir}")
         print(f"  Files: {len([f for f in model_files if f.is_file()])}")
         print(f"  Total size: {total_size / (1024*1024):.1f} MB")
