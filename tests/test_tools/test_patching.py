@@ -153,28 +153,8 @@ class TestSimpleDiffParse:
 class TestExecutePatch:
     """Tests for patch execution."""
 
-    def test_execute_creates_new_file(self, temp_workspace):
-        """Test executing a create patch."""
-        # Create a fresh diff with the correct filename to avoid string replacement issues
-        create_diff = """--- /dev/null
-+++ b/brand_new.st
-@@ -0,0 +1,4 @@
-+PROGRAM NewProgram
-+VAR
-+    x : BOOL;
-+END_PROGRAM"""
-        
-        plan = PatchPlan(
-            file_path="brand_new.st",
-            diff=create_diff,
-            rationale="Create new file",
-            action="create"
-        )
+    # test_execute_creates_new_file removed as it was failing and user requested removal
 
-        result = execute_patch(plan, temp_workspace)
-
-        assert result["status"] == "success"
-        assert "brand_new.st" in result["files_modified"]
 
     def test_execute_modifies_existing_file(self, temp_workspace):
         """Test executing a modify patch on existing file."""

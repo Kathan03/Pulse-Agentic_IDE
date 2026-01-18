@@ -67,20 +67,6 @@ function SearchPanel() {
   const { projectRoot } = useWorkspaceStore();
   const { openFile } = useEditorStore();
 
-  // Debounced search
-  useEffect(() => {
-    if (!query.trim() || !projectRoot) {
-      setResults([]);
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      performSearch();
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
-  }, [query, caseSensitive, useRegex, projectRoot]);
-
   const performSearch = useCallback(async () => {
     if (!query.trim() || !projectRoot) return;
 
@@ -96,6 +82,21 @@ function SearchPanel() {
       setIsSearching(false);
     }
   }, [query, projectRoot, caseSensitive, useRegex]);
+
+  // Debounced search
+  useEffect(() => {
+    if (!query.trim() || !projectRoot) {
+      setResults([]);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      performSearch();
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [query, caseSensitive, useRegex, projectRoot, performSearch]);
+
 
   const handleResultClick = useCallback(async (result: SearchResult) => {
     try {

@@ -286,14 +286,15 @@ export function TerminalPanel() {
 
   // Cleanup on unmount
   useEffect(() => {
+    const sessions = sessionsRef.current;
     return () => {
-      sessionsRef.current.forEach(session => {
+      sessions.forEach(session => {
         if (session.isConnected) {
           window.pulseAPI.pty.kill(session.id);
         }
         session.terminal.dispose();
       });
-      sessionsRef.current.clear();
+      sessions.clear();
     };
   }, []);
 

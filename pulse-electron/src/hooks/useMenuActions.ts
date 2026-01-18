@@ -16,6 +16,18 @@ export function useMenuActions(): void {
   const { toggleSidebar, toggleAgentPanel, toggleTerminal } = useUIStore();
 
   useEffect(() => {
+    // Helper functions
+    function handleNewFile(): void {
+      // Create a new untitled file
+      const untitledPath = `untitled-${Date.now()}`;
+      openFile(untitledPath, '');
+    }
+
+    function handleSave(): void {
+      if (activeFilePath) {
+        saveFile(activeFilePath);
+      }
+    }
     // Handle menu actions from main process
     const unsubscribeAction = window.pulseAPI.menu.onAction((action) => {
       console.log('[Menu] Action received:', action);
@@ -73,16 +85,5 @@ export function useMenuActions(): void {
     };
   }, [openFile, openWorkspace, toggleSidebar, toggleAgentPanel, toggleTerminal]);
 
-  // Helper functions
-  function handleNewFile(): void {
-    // Create a new untitled file
-    const untitledPath = `untitled-${Date.now()}`;
-    openFile(untitledPath, '');
-  }
 
-  function handleSave(): void {
-    if (activeFilePath) {
-      saveFile(activeFilePath);
-    }
-  }
 }

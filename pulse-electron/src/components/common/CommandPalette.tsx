@@ -200,6 +200,15 @@ export function CommandPalette() {
     }
   }, [commandPaletteVisible]);
 
+  // Execute command and close palette
+  const executeCommand = useCallback(
+    (command: Command) => {
+      hideCommandPalette();
+      command.handler();
+    },
+    [hideCommandPalette]
+  );
+
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -224,17 +233,10 @@ export function CommandPalette() {
           break;
       }
     },
-    [filteredCommands, selectedIndex, hideCommandPalette]
+    [filteredCommands, selectedIndex, hideCommandPalette, executeCommand]
   );
 
-  // Execute command and close palette
-  const executeCommand = useCallback(
-    (command: Command) => {
-      hideCommandPalette();
-      command.handler();
-    },
-    [hideCommandPalette]
-  );
+
 
   // Scroll selected item into view
   useEffect(() => {
@@ -312,9 +314,8 @@ function CommandItem({ command, isSelected, onClick, onMouseEnter }: CommandItem
     <button
       onClick={onClick}
       onMouseEnter={onMouseEnter}
-      className={`w-full px-4 py-2 flex items-center justify-between text-left transition-colors ${
-        isSelected ? 'bg-pulse-selection' : 'hover:bg-pulse-bg-tertiary'
-      }`}
+      className={`w-full px-4 py-2 flex items-center justify-between text-left transition-colors ${isSelected ? 'bg-pulse-selection' : 'hover:bg-pulse-bg-tertiary'
+        }`}
     >
       <div className="flex items-center gap-3">
         <span className="text-xs text-pulse-fg-muted w-16">{command.category}</span>
