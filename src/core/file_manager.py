@@ -8,7 +8,7 @@ All file I/O operations are sandboxed to the workspace root.
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 
 class FileManager:

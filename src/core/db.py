@@ -420,10 +420,10 @@ class ConversationDB:
 
         lines = [
             f"# {conv.get('title') or 'Conversation'}",
-            f"",
+            "",
             f"**Created:** {conv.get('created_at')}",
             f"**Project:** {conv.get('project_root')}",
-            f"",
+            "",
             "---",
             ""
         ]

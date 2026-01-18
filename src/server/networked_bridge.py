@@ -17,7 +17,6 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any
 
-from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
 from src.core.events import (
@@ -29,7 +28,6 @@ from src.core.events import (
 )
 from src.server.models import (
     WSMessage,
-    MessageType,
     create_event_message,
     create_approval_required_message,
 )

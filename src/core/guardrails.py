@@ -11,7 +11,7 @@ All file operations and tool executions must validate through these guardrails.
 
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)

@@ -12,205 +12,205 @@
 name: Release
 
 on:
-    push:
-        tags:
-            - "v*"
+  push:
+    tags:
+      - "v*"
 
 # Ensure only one release workflow runs at a time
 concurrency:
-    group: release-${{ github.ref }}
-    cancel-in-progress: false
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-    # ---------------------------------------------------------------------------
-    # Build Python Backend with PyInstaller
-    # ---------------------------------------------------------------------------
-    build-backend:
-        name: Build Backend
-        runs-on: windows-latest
-        outputs:
-            version: ${{ steps.version.outputs.version }}
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+  # ---------------------------------------------------------------------------
+  # Build Python Backend with PyInstaller
+  # ---------------------------------------------------------------------------
+  build-backend:
+    name: Build Backend
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Extract version from tag
-              id: version
-              run: |
-                  $version = "${{ github.ref_name }}" -replace '^v', ''
-                  echo "version=$version" >> $env:GITHUB_OUTPUT
-                  Write-Host "Building version: $version"
-              shell: pwsh
+      - name: Extract version from tag
+        id: version
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Building version: $version"
+        shell: pwsh
 
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.11"
-                  cache: "pip"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
-            - name: Install dependencies
-              run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-            - name: Build backend with PyInstaller
-              run: python scripts/build_backend.py
+      - name: Build backend with PyInstaller
+        run: python scripts/build_backend.py
 
-            - name: Verify backend build
-              run: |
-                  if (Test-Path "backend-dist/pulse-server.exe") {
-                    Write-Host "✓ Backend build successful"
-                    $size = (Get-Item "backend-dist/pulse-server.exe").Length / 1MB
-                    Write-Host "  Size: $([math]::Round($size, 2)) MB"
-                  } else {
-                    Write-Error "✗ Backend build failed"
-                    exit 1
-                  }
-              shell: pwsh
+      - name: Verify backend build
+        run: |
+          if (Test-Path "backend-dist/pulse-server.exe") {
+            Write-Host "✓ Backend build successful"
+            $size = (Get-Item "backend-dist/pulse-server.exe").Length / 1MB
+            Write-Host "  Size: $([math]::Round($size, 2)) MB"
+          } else {
+            Write-Error "✗ Backend build failed"
+            exit 1
+          }
+        shell: pwsh
 
-            - name: Upload backend artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: backend-dist
-                  path: backend-dist/
-                  retention-days: 1
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: backend-dist/
+          retention-days: 1
 
-    # ---------------------------------------------------------------------------
-    # Build Windows Installer with Electron Builder
-    # ---------------------------------------------------------------------------
-    build-windows:
-        name: Build Windows Installer
-        runs-on: windows-latest
-        needs: build-backend
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+  # ---------------------------------------------------------------------------
+  # Build Windows Installer with Electron Builder
+  # ---------------------------------------------------------------------------
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    needs: build-backend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Download backend artifact
-              uses: actions/download-artifact@v4
-              with:
-                  name: backend-dist
-                  path: backend-dist/
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-dist
+          path: backend-dist/
 
-            - name: Verify backend downloaded
-              run: |
-                  if (Test-Path "backend-dist/pulse-server.exe") {
-                    Write-Host "✓ Backend artifact downloaded"
-                  } else {
-                    Write-Error "✗ Backend artifact not found"
-                    exit 1
-                  }
-              shell: pwsh
+      - name: Verify backend downloaded
+        run: |
+          if (Test-Path "backend-dist/pulse-server.exe") {
+            Write-Host "✓ Backend artifact downloaded"
+          } else {
+            Write-Error "✗ Backend artifact not found"
+            exit 1
+          }
+        shell: pwsh
 
-            - name: Set up Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: "20"
-                  cache: "npm"
-                  cache-dependency-path: pulse-electron/package-lock.json
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: pulse-electron/package-lock.json
 
-            - name: Install dependencies
-              run: npm ci
-              working-directory: pulse-electron
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+        working-directory: pulse-electron
 
-            - name: Update version in package.json
-              run: |
-                  $version = "${{ needs.build-backend.outputs.version }}"
-                  $packagePath = "pulse-electron/package.json"
-                  $package = Get-Content $packagePath | ConvertFrom-Json
-                  $package.version = $version
-                  $package | ConvertTo-Json -Depth 100 | Set-Content $packagePath
-                  Write-Host "Updated package.json version to: $version"
-              shell: pwsh
+      - name: Update version in package.json
+        run: |
+          $version = "${{ needs.build-backend.outputs.version }}"
+          $packagePath = "pulse-electron/package.json"
+          $package = Get-Content $packagePath | ConvertFrom-Json
+          $package.version = $version
+          $package | ConvertTo-Json -Depth 100 | Set-Content $packagePath
+          Write-Host "Updated package.json version to: $version"
+        shell: pwsh
 
-            - name: Build Electron app
-              run: npm run build:win
-              working-directory: pulse-electron
-              env:
-                  CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Build Electron app
+        run: npm run build:win
+        working-directory: pulse-electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
-            - name: List release artifacts
-              run: |
-                  Write-Host "Release artifacts:"
-                  Get-ChildItem -Path "pulse-electron/release" -Recurse | ForEach-Object {
-                    Write-Host "  $($_.FullName)"
-                  }
-              shell: pwsh
+      - name: List release artifacts
+        run: |
+          Write-Host "Release artifacts:"
+          Get-ChildItem -Path "pulse-electron/release" -Recurse | ForEach-Object {
+            Write-Host "  $($_.FullName)"
+          }
+        shell: pwsh
 
-            - name: Upload installer artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: windows-installer
-                  path: |
-                      pulse-electron/release/*.exe
-                      pulse-electron/release/*.exe.blockmap
-                  retention-days: 5
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            pulse-electron/release/*.exe
+            pulse-electron/release/*.exe.blockmap
+          retention-days: 5
 
-    # ---------------------------------------------------------------------------
-    # Create GitHub Release
-    # ---------------------------------------------------------------------------
-    release:
-        name: Create GitHub Release
-        runs-on: ubuntu-latest
-        needs: [build-backend, build-windows]
-        permissions:
-            contents: write
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
+  # ---------------------------------------------------------------------------
+  # Create GitHub Release
+  # ---------------------------------------------------------------------------
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-windows]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-            - name: Download Windows installer
-              uses: actions/download-artifact@v4
-              with:
-                  name: windows-installer
-                  path: artifacts/
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: artifacts/
 
-            - name: List downloaded artifacts
-              run: |
-                  echo "Downloaded artifacts:"
-                  ls -la artifacts/
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          ls -la artifacts/
 
-            - name: Generate checksums
-              id: checksums
-              run: |
-                  cd artifacts
-                  sha256sum *.exe > checksums-sha256.txt
-                  echo "Generated checksums:"
-                  cat checksums-sha256.txt
-                  # Store checksums content for release body
-                  CHECKSUMS=$(cat checksums-sha256.txt)
-                  echo "content<<EOF" >> $GITHUB_OUTPUT
-                  echo "$CHECKSUMS" >> $GITHUB_OUTPUT
-                  echo "EOF" >> $GITHUB_OUTPUT
+      - name: Generate checksums
+        id: checksums
+        run: |
+          cd artifacts
+          sha256sum *.exe > checksums-sha256.txt
+          echo "Generated checksums:"
+          cat checksums-sha256.txt
+          # Store checksums content for release body
+          CHECKSUMS=$(cat checksums-sha256.txt)
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHECKSUMS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-            - name: Create GitHub Release
-              uses: softprops/action-gh-release@v2
-              with:
-                  name: Pulse v${{ needs.build-backend.outputs.version }}
-                  body: |
-                      ## Pulse IDE v${{ needs.build-backend.outputs.version }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Pulse v${{ needs.build-backend.outputs.version }}
+          body: |
+            ## Pulse IDE v${{ needs.build-backend.outputs.version }}
 
-                      ### Installation
+            ### Installation
 
-                      1. Download `Pulse-Setup-${{ needs.build-backend.outputs.version }}.exe`
-                      2. Run the installer
-                      3. Follow the setup wizard
-                      4. Launch Pulse from the Start Menu or Desktop shortcut
+            1. Download `Pulse-Setup-${{ needs.build-backend.outputs.version }}.exe`
+            2. Run the installer
+            3. Follow the setup wizard
+            4. Launch Pulse from the Start Menu or Desktop shortcut
 
-                      ### What's New
+            ### What's New
 
-                      See the [changelog](https://github.com/${{ github.repository }}/commits/v${{ needs.build-backend.outputs.version }}) for details.
+            See the [changelog](https://github.com/${{ github.repository }}/commits/v${{ needs.build-backend.outputs.version }}) for details.
 
-                      ### Checksums (SHA256)
+            ### Checksums (SHA256)
 
-                      ```
-                      ${{ steps.checksums.outputs.content }}
-                      ```
-                  files: |
-                      artifacts/*.exe
-                      artifacts/checksums-sha256.txt
-                  generate_release_notes: true
-                  draft: false
-                  prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            ```
+            ${{ steps.checksums.outputs.content }}
+            ```
+          files: |
+            artifacts/*.exe
+            artifacts/checksums-sha256.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

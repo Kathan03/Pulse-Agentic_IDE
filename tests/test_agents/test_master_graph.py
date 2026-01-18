@@ -13,15 +13,10 @@ IMPORTANT: All LLM calls are mocked - NO real API calls.
 """
 
 import pytest
-import asyncio
-from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock
 from datetime import datetime
 
 from src.agents.state import (
-    MasterState,
-    PatchPlan,
-    CommandPlan,
     ToolOutput,
     create_initial_master_state,
 )

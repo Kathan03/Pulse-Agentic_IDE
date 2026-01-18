@@ -11,8 +11,6 @@ Run with: pytest tests/test_tier3_toggles.py -v
 
 import pytest
 import asyncio
-from pathlib import Path
-from src.core.settings import SettingsManager
 from src.tools.builder_crew import implement_feature
 from src.tools.auditor_swarm import diagnose_project
 
@@ -269,7 +267,6 @@ async def test_diagnose_project_stage_a_only(temp_workspace, settings_manager_mo
 
 if __name__ == "__main__":
     # Run tests manually
-    import sys
 
     asyncio.run(pytest.main([__file__, "-v", "-s"]))
 

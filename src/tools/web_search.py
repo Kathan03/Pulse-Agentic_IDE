@@ -16,8 +16,7 @@ Implementation:
 - Bounded output (max 10 results, 500 char snippets)
 """
 
-from typing import List, Dict, Any, Optional
-from pathlib import Path
+from typing import List, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)

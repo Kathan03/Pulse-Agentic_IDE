@@ -9,9 +9,7 @@ Tests:
 - Output truncation
 """
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 import subprocess
 
 from src.tools.terminal import (
@@ -19,7 +17,6 @@ from src.tools.terminal import (
     plan_terminal_cmd,
     run_terminal_cmd,
     MAX_OUTPUT_SIZE,
-    DEFAULT_TIMEOUT,
 )
 from src.agents.state import CommandPlan
 

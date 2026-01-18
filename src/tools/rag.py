@@ -12,7 +12,7 @@ Database: .pulse/chroma_db/ (vector store) + .pulse/history.sqlite (freshness me
 """
 
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import logging
 import hashlib
 import sqlite3

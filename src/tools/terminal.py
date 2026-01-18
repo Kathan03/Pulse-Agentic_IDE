@@ -23,7 +23,6 @@ import sys
 import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
-from datetime import datetime
 
 from src.agents.state import CommandPlan
 from src.core.processes import register_process
@@ -387,7 +386,7 @@ def run_terminal_cmd(
                 stdout, stderr = proc.communicate(timeout=1)
                 result["stdout"] = _truncate_output(stdout, MAX_OUTPUT_SIZE)
                 result["stderr"] = _truncate_output(stderr, MAX_OUTPUT_SIZE)
-            except:
+            except Exception:
                 result["stderr"] = f"[Timeout after {timeout}s - process killed]"
 
             result["exit_code"] = proc.returncode if proc.returncode else -1

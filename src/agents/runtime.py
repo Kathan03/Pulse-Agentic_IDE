@@ -25,11 +25,10 @@ import asyncio
 import uuid
 from pathlib import Path
 from typing import Optional, Dict, Any
-from datetime import datetime
 import logging
 
 from src.agents.master_graph import create_master_graph
-from src.agents.state import MasterState, create_initial_master_state
+from src.agents.state import create_initial_master_state
 from src.core.settings import get_settings_manager
 from src.core.workspace import ensure_workspace_initialized
 from src.core.events import (
@@ -263,7 +262,7 @@ async def run_agent(
             raise ValueError(f"Invalid project root: {project_root}")
 
         # Ensure workspace is initialized (.pulse/ directory)
-        workspace_mgr = ensure_workspace_initialized(str(project_root_path))
+        ensure_workspace_initialized(str(project_root_path))
         logger.info(f"Workspace initialized: {project_root_path}")
         
         # Store project root for resume

@@ -23,8 +23,6 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from src.server.models import (
     WSMessage,
     MessageType,
-    AgentRequestPayload,
-    ApprovalResponsePayload,
     CancelRequestPayload,
     create_run_result_message,
     create_error_message,

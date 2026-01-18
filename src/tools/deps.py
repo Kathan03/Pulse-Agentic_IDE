@@ -27,7 +27,7 @@ Output Format:
 
 import sys
 import logging
-from typing import Dict, List, Any
+from typing import Dict, Any
 from pathlib import Path
 
 logger = logging.getLogger(__name__)

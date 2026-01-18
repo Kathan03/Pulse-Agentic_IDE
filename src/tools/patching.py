@@ -19,8 +19,6 @@ Safety:
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import logging
-import hashlib
-from datetime import datetime
 
 try:
     from unidiff import PatchSet
@@ -30,7 +28,7 @@ except ImportError:
     PatchSet = None
 
 from src.agents.state import PatchPlan
-from src.core.guardrails import validate_path, PathViolationError
+from src.core.guardrails import validate_path
 from src.core.file_manager import FileManager
 
 logger = logging.getLogger(__name__)
@@ -174,7 +172,6 @@ def _simple_diff_parse(
     deletions = 0
 
     lines = diff.split('\n')
-    current_file = None
 
     for line in lines:
         # Parse file headers
@@ -186,7 +183,6 @@ def _simple_diff_parse(
             parts = line.split()
             if len(parts) >= 2:
                 file_path = parts[1].lstrip('b/')
-                current_file = file_path
                 if file_path not in touched_files:
                     touched_files.append(file_path)
 

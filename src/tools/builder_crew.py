@@ -22,7 +22,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional
 
 from crewai import Agent, Task, Crew, Process
 
@@ -47,7 +47,6 @@ except ImportError:
 
 from src.core.settings import get_settings_manager
 from src.core.prompts import CREW_PLANNER_PROMPT, CREW_CODER_PROMPT, CREW_REVIEWER_PROMPT
-from src.agents.state import PatchPlan
 
 logger = logging.getLogger(__name__)
 
@@ -332,7 +331,7 @@ Generate a structured plan with:
         )
 
         code_task = Task(
-            description=f"""Implement the plan step-by-step.
+            description="""Implement the plan step-by-step.
 
 For each file that needs changes, generate a unified diff patch in this exact format:
 
@@ -439,10 +438,10 @@ def _build_context_string(project_root: Path, context: Dict[str, Any]) -> str:
         parts.append(f"\nWorkspace Summary:\n{workspace_summary}")
 
     if active_files := context.get("active_files"):
-        parts.append(f"\nActive Files:\n" + "\n".join(f"- {f}" for f in active_files))
+        parts.append("\nActive Files:\n" + "\n".join(f"- {f}" for f in active_files))
 
     if recent_changes := context.get("recent_changes"):
-        parts.append(f"\nRecent Changes:\n" + "\n".join(f"- {c}" for c in recent_changes))
+        parts.append("\nRecent Changes:\n" + "\n".join(f"- {c}" for c in recent_changes))
 
     return "\n".join(parts)
 

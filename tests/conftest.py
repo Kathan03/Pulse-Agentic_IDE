@@ -10,10 +10,8 @@ Provides common fixtures for:
 
 import pytest
 import asyncio
-import tempfile
-import shutil
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock
 
 
 # ============================================================================

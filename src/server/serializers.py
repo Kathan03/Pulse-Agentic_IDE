@@ -15,7 +15,7 @@ Handles:
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict
 
 from pydantic import BaseModel
 

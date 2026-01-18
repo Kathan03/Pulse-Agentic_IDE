@@ -19,7 +19,7 @@ Features:
 import logging
 import os
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 # Import SDKs
 try:
@@ -700,7 +700,7 @@ class LLMClient:
 
                 # Handle max_tokens parameter errors
                 if "max_tokens" in error_message or "max_completion_tokens" in error_message:
-                    logger.warning(f"Max tokens parameter error, trying alternative")
+                    logger.warning("Max tokens parameter error, trying alternative")
                     params.pop("max_tokens", None)
                     params.pop("max_completion_tokens", None)
 
@@ -715,14 +715,14 @@ class LLMClient:
 
                 # Handle temperature parameter errors
                 if "temperature" in error_message:
-                    logger.warning(f"Temperature parameter error, using default")
+                    logger.warning("Temperature parameter error, using default")
                     # Some models only support default temperature (1.0 for GPT-5)
                     if "gpt-5" in model:
                         params["temperature"] = 1.0
                         logger.info(f"Retrying with default temperature=1.0 for {model}")
                     else:
                         params.pop("temperature", None)
-                        logger.info(f"Retrying without temperature parameter")
+                        logger.info("Retrying without temperature parameter")
                     retry_needed = True
 
                 # Retry API call if we made parameter adjustments

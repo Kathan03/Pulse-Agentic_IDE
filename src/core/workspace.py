@@ -7,7 +7,6 @@ and optional bounded logs. All workspace state is stored locally within the proj
 
 import sqlite3
 from pathlib import Path
-from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -156,7 +155,7 @@ class WorkspaceManager:
         with gitignore_path.open("a", encoding="utf-8") as f:
             if existing_content and not existing_content.endswith("\n"):
                 f.write("\n")
-            f.write(f"\n# Pulse IDE workspace-local state (generated)\n")
+            f.write("\n# Pulse IDE workspace-local state (generated)\n")
             f.write(f"{pulse_ignore_entry}\n")
 
         logger.info(".gitignore updated")

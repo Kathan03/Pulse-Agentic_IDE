@@ -441,19 +441,19 @@ def _run_autogen_sync(
 
         moderator = UserProxyAgent(
             name="Moderator",
-            system_message=f"""You are the Moderator. Synthesize the debate into a final JSON output.
+            system_message="""You are the Moderator. Synthesize the debate into a final JSON output.
 
 REQUIRED OUTPUT FORMAT (strict JSON):
-{{
+{
   "risk_level": "HIGH" | "MEDIUM" | "LOW",
   "findings": [
-    {{"severity": "ERROR" | "WARNING" | "INFO", "file": "path/to/file", "line": 42, "message": "Description"}}
+    {"severity": "ERROR" | "WARNING" | "INFO", "file": "path/to/file", "line": 42, "message": "Description"}
   ],
   "prioritized_fixes": [
-    {{"priority": 1, "action": "What to do", "rationale": "Why it matters"}}
+    {"priority": 1, "action": "What to do", "rationale": "Why it matters"}
   ],
   "verification_steps": ["1. Step one", "2. Step two"]
-}}
+}
 
 Do NOT include any text outside the JSON block. Output ONLY valid JSON.""",
             human_input_mode="NEVER",

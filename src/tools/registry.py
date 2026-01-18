@@ -152,7 +152,7 @@ def generate_next_steps(tool_name: str, args: Dict[str, Any], result: Any, succe
 
     if tool_name == "manage_file_ops":
         operation = args.get("operation", "unknown")
-        path = args.get("path", "")
+        args.get("path", "")
         if operation == "read":
             return [
                 "Search for specific functions or patterns",
@@ -767,7 +767,7 @@ class ToolRegistry:
         # and we need to await the async function
         try:
             # Try to get current loop - if one exists, use run_coroutine_threadsafe
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # We're in an async context but invoke_tool is sync
             # Use asyncio.run in a thread to avoid nesting
             import concurrent.futures
@@ -808,7 +808,7 @@ class ToolRegistry:
         # Always run in a new event loop since invoke_tool is synchronous
         try:
             # Try to get current loop - if one exists, use thread executor
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # We're in an async context but invoke_tool is sync
             # Use asyncio.run in a thread to avoid nesting
             import concurrent.futures

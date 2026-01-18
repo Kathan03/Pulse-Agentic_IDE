@@ -3,8 +3,6 @@ Tests for Tool Usage Analytics.
 """
 import pytest
 import json
-import time
-from pathlib import Path
 from src.core.analytics import ToolAnalytics, log_tool_usage, get_analytics_summary, reset_analytics
 
 class TestToolAnalytics:

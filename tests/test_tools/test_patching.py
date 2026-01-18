@@ -10,8 +10,7 @@ Tests:
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 from src.tools.patching import (
     preview_patch,

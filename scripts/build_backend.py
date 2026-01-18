@@ -99,7 +99,7 @@ def verify_build():
 
     if exe_path.exists():
         size_mb = exe_path.stat().st_size / (1024 * 1024)
-        print(f"\nBuild verified:")
+        print("\nBuild verified:")
         print(f"  Executable: {exe_path}")
         print(f"  Size: {size_mb:.1f} MB")
         return True

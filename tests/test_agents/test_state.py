@@ -9,11 +9,9 @@ Tests:
 - truncate_messages memory policy
 """
 
-import pytest
 from datetime import datetime
 
 from src.agents.state import (
-    MasterState,
     PatchPlan,
     CommandPlan,
     ApprovalRequest,

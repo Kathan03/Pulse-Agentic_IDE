@@ -26,13 +26,11 @@ from pathlib import Path
 
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command, interrupt
+from langgraph.types import interrupt
 
 from src.agents.state import (
     MasterState,
-    PatchPlan,
     CommandPlan,
-    ApprovalRequest,
     ToolOutput,
     truncate_messages,
     MESSAGE_HISTORY_LIMIT,
@@ -45,7 +43,6 @@ from src.core.events import (
     emit_tool_executed,
     emit_approval_requested,
 )
-from src.core.guardrails import truncate_output
 
 logger = logging.getLogger(__name__)
 
@@ -339,7 +336,7 @@ def create_error_response(error_message: str) -> dict:
 # TOOL REGISTRY (Phase 4)
 # ============================================================================
 
-from src.tools.registry import ToolRegistry
+from src.tools.registry import ToolRegistry  # noqa: E402
 
 # Global tool registry (initialized in create_master_graph)
 _tool_registry: Optional[ToolRegistry] = None
@@ -357,8 +354,8 @@ def get_tool_registry() -> ToolRegistry:
 # REAL LLM CLIENT (Phase 1)
 # ============================================================================
 
-from src.core.llm_client import LLMClient, LLMResponse, get_session_tracker
-from src.core.prompts import AGENT_MODE_PROMPT, ASK_MODE_PROMPT, PLAN_MODE_PROMPT, PLC_ENHANCEMENT
+from src.core.llm_client import LLMClient, LLMResponse, get_session_tracker  # noqa: E402
+from src.core.prompts import AGENT_MODE_PROMPT, ASK_MODE_PROMPT, PLAN_MODE_PROMPT, PLC_ENHANCEMENT  # noqa: E402
 
 
 # ============================================================================

@@ -21,7 +21,6 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI
