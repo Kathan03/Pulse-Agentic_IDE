@@ -6,7 +6,7 @@
   <br />
   
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-  [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+  [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
   [![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
   [![Electron](https://img.shields.io/badge/Electron-28-9FEAF9.svg)](https://www.electronjs.org/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6.svg)](https://www.typescriptlang.org/)
@@ -23,20 +23,20 @@
 
 ### The Problem with Current AI Coding Tools
 
-| Feature | GitHub Copilot / Cursor | **Pulse** |
-|---------|------------------------|-----------|
-| **Pricing** | $20/month subscription | **Pay only for what you use** |
-| **Model Lock-in** | Proprietary models only | **Any model: OpenAI, Anthropic, Google Gemini** |
-| **Agent Capabilities** | Autocomplete-focused | **Full agentic workflow: Plan → Execute → Verify** |
+| Feature | Claude Code / Windsurf / Antigravity | **Pulse** |
+|---------|--------------------------------------|-----------|
+| **Pricing** | $20/month subscription (or usage limits) | **Pay only for what you use** |
+| **Usage Limits** | Time-based limits (e.g., 5 hours of Claude usage) | **No usage limits — API-based access** |
+| **Model Lock-in** | Tied to specific providers | **Any model: OpenAI, Anthropic, Google Gemini** |
 | **PLC/Industrial Support** | None | **First-class IEC 61131-3 support** |
-| **Terminal Access** | Limited or none | **Full terminal with safety guardrails** |
+| **Multi-Agent Architecture** | Single agent | **CrewAI + AutoGen sub-agents** |
 
 ### 💰 Cost Savings Example
 
 With subscription-based tools, you pay **$20/month** regardless of usage. With Pulse:
-- Light usage month: **~$5-10** → **Save $10-15**
-- Heavy usage month: **~$15-20** → Pay only what you use
-- No usage: **$0** → No wasted subscription fees
+- Light usage month (~$5-10 API costs) → **Save $10-15**
+- Variable usage → Pay only for tokens consumed
+- No usage → **$0** — No wasted subscription fees
 
 **You bring your own API keys. You control your costs.**
 
@@ -44,17 +44,20 @@ With subscription-based tools, you pay **$20/month** regardless of usage. With P
 
 ## ✨ Key Features
 
-### � **Multi-Agent Architecture**
+### 🧠 **Multi-Agent Architecture**
 Pulse orchestrates multiple AI agents working in concert:
 - **Master Agent (LangGraph)**: Stateful reasoning engine with cyclic workflows
-- **Builder Crew (CrewAI)**: Role-based agents for complex feature implementation
+- **Builder Crew (CrewAI)**: Role-based agents (Planner, Coder, Reviewer) for complex feature implementation
 - **Auditor Swarm (AutoGen)**: Multi-agent debates for code review and security analysis
 
 ### 🔌 **Multi-Provider LLM Support**
 Use any model from any provider — switch models mid-conversation:
-- **OpenAI**: GPT-4, GPT-4-Turbo, GPT-3.5
-- **Anthropic**: Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku
-- **Google Gemini**: Gemini 1.5 Pro, Gemini 1.5 Flash
+
+| Provider | Supported Models |
+|----------|------------------|
+| **OpenAI** | `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-5.2-codex`, `gpt-5.1-codex-max`, `gpt-5.1-codex`, `gpt-5.2-pro`, `gpt-5-pro` |
+| **Anthropic** | `claude-sonnet-4.5`, `claude-opus-4.5` |
+| **Google Gemini** | `gemini-3-pro`, `gemini-3-flash` |
 
 ### 🛡️ **Enterprise-Grade Safety**
 - **Terminal Guardrails**: Commands analyzed for risk (Low/Medium/High)
@@ -73,52 +76,36 @@ Persistent chat history with context-aware assistance across sessions.
 
 ## 🛠️ Technology Stack
 
-This project showcases proficiency across the full stack of modern AI engineering:
-
 ### **AI/ML Frameworks**
-| Framework | Purpose |
-|-----------|---------|
-| **LangGraph** | Stateful, cyclic agent workflows with tool execution |
-| **LangChain** | LLM abstraction, tool definitions, prompt management |
-| **CrewAI** | Role-based multi-agent orchestration |
-| **AutoGen (Microsoft)** | Multi-agent conversation and debate framework |
+- **LangGraph** — Stateful, cyclic agent workflows with tool execution
+- **LangChain** — LLM abstraction, tool definitions, prompt management
+- **CrewAI** — Role-based multi-agent orchestration
+- **PyAutoGen** — Microsoft's multi-agent conversation framework
 
 ### **LLM Provider SDKs**
-| SDK | Provider |
-|-----|----------|
-| **OpenAI SDK** | GPT-4, GPT-3.5 |
-| **Anthropic SDK** | Claude 3.5 Sonnet, Claude 3 Opus |
-| **Google Generative AI SDK** | Gemini 1.5 Pro, Gemini Flash |
+- **OpenAI SDK** — GPT-5.x series
+- **Anthropic SDK** — Claude 4.5 series
+- **Google Generative AI SDK** — Gemini 3 series
 
-### **Backend**
-| Technology | Purpose |
-|------------|---------|
-| **Python 3.11+** | Core backend language |
-| **FastAPI** | WebSocket server for real-time communication |
-| **SQLite** | Conversation history persistence |
-| **ChromaDB** | Vector database for semantic codebase search |
-| **PyInstaller** | Backend bundling for distribution |
+### **Backend (Python)**
+- **FastAPI** + **WebSockets** — Real-time bidirectional communication
+- **Pydantic** — Data validation and settings management
+- **ChromaDB** — Vector database for semantic codebase search
+- **PyInstaller** — Backend bundling for distribution
 
-### **Frontend**
-| Technology | Purpose |
-|------------|---------|
-| **Electron 28** | Desktop application framework |
-| **React 18** | UI component library |
-| **TypeScript** | Type-safe frontend code |
-| **Monaco Editor** | VS Code's editor engine |
-| **Vite** | Fast build tooling |
-| **Xterm.js** | Terminal emulation |
+### **Frontend (TypeScript)**
+- **Electron** — Desktop application framework
+- **React** + **Vite** — Modern UI with fast HMR
+- **Monaco Editor** — VS Code's editor engine
+- **Xterm.js** — Terminal emulation
 
 ### **DevOps & CI/CD**
-| Technology | Purpose |
-|------------|---------|
-| **GitHub Actions** | Automated CI/CD pipeline |
-| **electron-builder** | Windows installer generation (NSIS) |
-| **pytest** | Python test framework |
-| **ESLint** | TypeScript linting |
-| **Ruff** | Python linting |
+- **GitHub Actions** — Automated CI/CD pipeline
+- **electron-builder** — Windows installer (NSIS)
+- **pytest** + **Ruff** — Python testing & linting
+- **ESLint** — TypeScript linting
 
-> **Note**: The UI was initially prototyped with Flet (Flutter for Python) for rapid iteration, then migrated to Electron + React for production-grade UX.
+> **Note**: The UI was initially prototyped with Flet (Flutter for Python), then migrated to Electron + React for production-grade UX.
 
 ---
 
@@ -128,32 +115,19 @@ Pulse uses a **Hub-and-Spoke** architecture where the Master Agent coordinates a
 
 ```mermaid
 graph TD
-    User["👤 User"] -->|Chat & Commands| UI["🖥️ Electron UI"]
-    UI <-->|WebSocket| Server["⚡ FastAPI Server"]
-    Server --> Master["🧠 Master Agent"]
+    User["User / Developer"] -->|Chat & Commands| UI["Pulse UI (Electron)"]
+    UI -->|Events| Master["Master Agent (LangGraph)"]
 
-    subgraph "Unified Master Loop (LangGraph)"
-        Master -->|Route| Decision{Needs Sub-Agent?}
-        Decision -->|No| Tools["🔧 Direct Tool Execution"]
-        Decision -->|Yes| SubAgents["🤖 Sub-Agent Invocation"]
-        Tools --> Master
-        SubAgents --> Master
+    subgraph "Unified Master Loop"
+        Master -->|Request Tool| Exec["Tool Execution Node"]
+        Exec -->|Tool Result| Master
     end
 
     subgraph "Tool Registry"
-        Tools --> FileOps["📁 File Operations"]
-        Tools --> Terminal["💻 Terminal"]
-        Tools --> Search["🔍 Codebase Search"]
-        Tools --> Patch["📝 Patch/Diff"]
+        Exec -->|Invoke| Tools["Standard Tools"]
+        Exec -->|Invoke| Crew["CrewAI Sub-agents"]
+        Exec -->|Invoke| AutoGen["AutoGen Auditors"]
     end
-
-    subgraph "Sub-Agents (Invoked as Tools)"
-        SubAgents --> CrewAI["👥 CrewAI Builder"]
-        SubAgents --> AutoGen["🔒 AutoGen Auditor"]
-    end
-
-    CrewAI --> |Planner + Coder + Reviewer| Master
-    AutoGen --> |Security + Quality Analysis| Master
 ```
 
 **Key Design Decisions:**
@@ -164,9 +138,9 @@ graph TD
 
 ---
 
-## � CI/CD Pipeline
+## 🚀 CI/CD Pipeline
 
-Pulse features a fully automated build and release pipeline:
+Pulse features a fully automated build and release pipeline using GitHub Actions:
 
 ### **Continuous Integration (`ci.yml`)**
 Triggered on every push and pull request:
@@ -179,7 +153,7 @@ Triggered on every push and pull request:
 ### **Automated Releases (`release.yml`)**
 Triggered on version tags (`v*`):
 1. **Build Python backend** → `pulse-server.exe` (PyInstaller)
-2. **Build Electron app** → `Pulse-Setup-{version}.exe` (electron-builder)
+2. **Build Electron app** → `Pulse-Setup-{version}.exe` (electron-builder + NSIS)
 3. **Create GitHub Release** with checksums and changelog
 
 ```bash
@@ -232,11 +206,6 @@ ANTHROPIC_API_KEY=sk-ant-...
 GOOGLE_API_KEY=AI...
 ```
 
-**Supported Models:**
-- OpenAI: `gpt-4`, `gpt-4-turbo`, `gpt-3.5-turbo`
-- Anthropic: `claude-3-5-sonnet-20241022`, `claude-3-opus-20240229`
-- Google: `gemini-1.5-pro`, `gemini-1.5-flash`
-
 ---
 
 ## 📂 Project Structure
@@ -254,21 +223,22 @@ Pulse/
 │   ├── agents/            # LangGraph, CrewAI, AutoGen
 │   ├── server/            # FastAPI WebSocket server
 │   ├── tools/             # Tool implementations
-│   └── llm_client.py      # Multi-provider LLM abstraction
+│   └── core/llm_client.py # Multi-provider LLM abstraction
 ├── tests/                 # pytest test suite
 └── requirements.txt       # Python dependencies
 ```
 
 ---
 
-## 🔮 Roadmap
+## 🔮 Future Roadmap
 
-- [x] **Phase A**: Core agent architecture (LangGraph + Tools)
-- [x] **Phase B**: Electron UI with Monaco Editor
-- [x] **Phase C**: CI/CD pipeline with automated releases
-- [ ] **Future**: macOS and Linux builds
-- [ ] **Future**: VS Code extension integration
-- [ ] **Future**: Cloud deployment option
+- [ ] **Git Operations Tool**: Full git support (commit, push, pull, branch, merge)
+- [ ] **Model Routing/Fallback**: Automatically route tasks to optimal models
+- [ ] **Plugin System**: Third-party plugin support
+- [ ] **macOS and Linux Builds**: Cross-platform installers
+- [ ] **Local LLM Support**: Ollama, LM Studio integration
+
+See [FUTURE_OPTIMIZATIONS.md](docs/FUTURE_OPTIMIZATIONS.md) for the complete roadmap.
 
 ---
 
@@ -279,6 +249,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 <div align="center">
-  <p>Built with ❤️ by <b>Kathan Shah</b></p>
+  <p>Built with ❤️ by <b>Kathan</b></p>
   <p><i>Demonstrating expertise in AI/ML Engineering, Full-Stack Development, and DevOps</i></p>
 </div>
