@@ -1,0 +1,213 @@
+PULSE IDE IMPROVEMENT ROADMAP
+
+  Based on my analysis, here's the complete list of improvements organized by category and priority:
+
+  ---
+  PHASE A: CRITICAL ARCHITECTURE FIXES (High Impact)
+
+  A1. Process ALL Tool Calls Per Iteration
+
+  File: src/agents/master_graph.py
+  Current: Processes only first tool call per LLM response
+  Change: Loop through all llm_response.tool_calls and execute each before returning to master_agent
+  Impact: Reduces LLM round-trips by 2-3x for multi-tool operations
+
+  A2. Improve Prompts with ReAct + CoT Patterns
+
+  File: src/core/prompts.py
+  Current: Basic role descriptions with tool lists
+  Change:
+  - Add explicit <thinking> reasoning instructions
+  - Add tool selection guidance (when to use which tool)
+  - Add output formatting instructions
+  - Add error recovery patterns
+  Impact: Significantly improves agent decision quality
+
+  A3. Enhance Memory Management
+
+  File: src/agents/state.py + src/agents/master_graph.py
+  Current: Simple concatenation for rolling summary
+  Change:
+  - Use LLM to generate intelligent summaries when truncating
+  - Implement priority-based message retention
+  - Persist conversation history to SQLite
+  Impact: Better context retention in long conversations
+
+  ---
+  PHASE B: FILE CLEANUP (Quick Wins)
+
+  B1. Delete Unused/Duplicate Components
+
+  Files to DELETE:
+  - src/ui/components/code_preview_panel.py (duplicate of approval.py)
+  - src/ui/components/loading_animation.py (unused, vibe_loader serves purpose)
+  - src/ui/components/clarification_dialog.py (not used in v2.6 architecture)
+
+  B2. Update Component Exports
+
+  File: src/ui/components/__init__.py
+  Change: Remove deleted file imports, clean up exports
+
+  ---
+  PHASE C: PROMPT SYSTEM OVERHAUL
+
+  C1. Create Granular Prompt Configuration System
+
+  File: src/core/prompts.py
+  Current: 3 modes (Agent/Ask/Plan)
+  Change:
+  - Create modular prompt components (base + mode + task-specific)
+  - Add dynamic prompt composition based on context
+  - Add prompts for specific operations (file exploration, code generation, debugging)
+
+  C2. Add Task-Specific Prompt Enhancements
+
+  New prompts to add:
+  - EXPLORE_PROMPT - For codebase exploration tasks
+  - DEBUG_PROMPT - For debugging/error fixing
+  - REFACTOR_PROMPT - For code refactoring
+  - TEST_PROMPT - For test generation
+  - REVIEW_PROMPT - For code review
+
+  C3. Improve PLC-Specific Prompts
+
+  File: src/core/prompts.py
+  Change:
+  - More detailed IEC 61131-3 guidance
+  - Structured Text best practices
+  - Safety-critical programming patterns
+
+  ---
+  PHASE D: UI IMPROVEMENTS
+
+  D1. Integrate Monaco Editor (Main Editor)
+
+  File: src/ui/editor.py
+  Change:
+  - Replace custom PythonHighlighter with Monaco WebView
+  - Implement Python ↔ Monaco message bridge
+  - Keep tab management logic, remove custom highlighting code
+  Benefits: Proper syntax highlighting, code folding, minimap, better performance
+
+  D2. Integrate Monaco Diff View (Approval Modal)
+
+  File: src/ui/components/approval.py
+  Change:
+  - Replace text-based diff display with Monaco diff editor
+  - Use monaco.editor.createDiffEditor() for side-by-side view
+  Benefits: Professional diff viewing experience
+
+  D3. Fix Sidebar Scrolling
+
+  File: src/ui/sidebar.py
+  Change: Add expand=True to enable proper scrolling
+
+  D4. Improve File Tree (VS Code-style)
+
+  File: src/ui/sidebar.py
+  Change: Implement proper ExpansionTile for folder expansion/collapse
+
+  ---
+  PHASE E: TOOL SYSTEM ENHANCEMENTS
+
+  E1. Add Parallel Tool Execution Support
+
+  File: src/agents/master_graph.py
+  Current: Code exists (lines 370-460) but not integrated
+  Change:
+  - Enable parallel execution for independent read-only tools
+  - Maintain sequential execution for dependent/write operations
+
+  E2. Improve Tool Output Formatting
+
+  File: src/tools/registry.py
+  Change:
+  - Standardize tool output format for LLM consumption
+  - Add structured error messages with recovery suggestions
+
+  E3. Add Tool Usage Analytics
+
+  New file: src/core/analytics.py (optional)
+  Purpose: Track tool usage patterns for prompt optimization
+
+  ---
+  PHASE F: EVENT SYSTEM & STATE MANAGEMENT
+
+  F1. Persist Conversation History
+
+  Files: src/core/db.py + src/agents/runtime.py
+  Change:
+  - Save full conversation to SQLite
+  - Enable conversation resume across sessions
+  - Implement conversation export
+
+  F2. Improve Vibe Status Updates
+
+  Files: src/agents/master_graph.py + src/ui/bridge.py
+  Change:
+  - More granular status updates during tool execution
+  - Add progress indicators for long-running operations
+
+  ---
+  PHASE G: QUALITY & POLISH
+
+  G1. Add Error Recovery Patterns
+
+  File: src/agents/master_graph.py
+  Change:
+  - Graceful handling of API failures
+  - Automatic retry with backoff
+  - User-friendly error messages
+
+  G2. Add Cost/Token Tracking
+
+  File: src/core/llm_client.py
+  Change:
+  - Track tokens used per request
+  - Optional budget limits
+  - Usage reporting
+
+  G3. Improve Cancellation Handling
+
+  Files: src/agents/runtime.py + src/agents/master_graph.py
+  Change:
+  - Faster cancellation response
+  - Clean state on cancel
+  - Partial result preservation
+
+  ---
+  IMPLEMENTATION ORDER (Recommended)
+
+  | Order | Task ID | Description                          | Effort |
+  |-------|---------|--------------------------------------|--------|
+  | 1     | A1      | Process ALL tool calls per iteration | Medium |
+  | 2     | B1      | Delete unused files                  | Low    |
+  | 3     | B2      | Update component exports             | Low    |
+  | 4     | A2      | Improve prompts (ReAct + CoT)        | High   |
+  | 5     | C1      | Granular prompt configuration        | Medium |
+  | 6     | C2      | Task-specific prompts                | Medium |
+  | 7     | D3      | Fix sidebar scrolling                | Low    |
+  | 8     | A3      | Enhance memory management            | High   |
+  | 9     | E1      | Parallel tool execution              | Medium |
+  | 10    | D1      | Monaco editor integration            | High   |
+  | 11    | D2      | Monaco diff view                     | Medium |
+  | 12    | F1      | Persist conversation history         | Medium |
+  | 13    | C3      | PLC-specific prompts                 | Medium |
+  | 14    | D4      | VS Code-style file tree              | Medium |
+  | 15    | E2      | Tool output formatting               | Low    |
+  | 16    | G1      | Error recovery patterns              | Medium |
+  | 17    | F2      | Vibe status improvements             | Low    |
+  | 18    | G2      | Cost/token tracking                  | Low    |
+  | 19    | G3      | Cancellation handling                | Low    |
+  | 20    | E3      | Tool usage analytics                 | Low    |
+
+  ---
+  SUMMARY BY EFFORT
+
+  | Effort Level | Tasks                              | Total |
+  |--------------|------------------------------------|-------|
+  | Low          | B1, B2, D3, E2, F2, G2, G3, E3     | 8     |
+  | Medium       | A1, C1, C2, C3, D2, D4, E1, F1, G1 | 9     |
+  | High         | A2, A3, D1                         | 3     |
+
+  ---
