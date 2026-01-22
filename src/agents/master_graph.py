@@ -19,6 +19,7 @@ LangGraph Architecture:
 """
 
 import asyncio
+import json
 from typing import Literal, Optional, Dict, Any, List
 from datetime import datetime
 import logging
@@ -748,7 +749,7 @@ async def master_agent_node(state: MasterState) -> MasterState:
                 system_prompt=system_prompt,
                 tools=tool_schemas if tool_schemas else None,
                 temperature=0.0,  # Deterministic, faster, consistent (Claude Code approach)
-                max_tokens=4096,
+                max_tokens=16384,  # Increased from 4096 to handle complex code generation
                 max_retries=3,
                 base_delay=1.0
             )
@@ -1314,10 +1315,57 @@ async def tool_execution_node(state: MasterState) -> MasterState:
         # 1. Approval-required tools (apply_patch, plan_terminal_cmd) - need user consent
         # 2. Non-read-only tools (manage_file_ops with write) - run sequentially for safety
         # =================================================================
+
+        # PERMANENT FIX: Skip manage_file_ops if apply_patch will handle the same file
+        # This prevents duplicate approvals when LLM calls both tools for same file
+        files_being_patched = set()
+        for call in approval_calls:
+            if call["name"] == "apply_patch":
+                diff_arg = call.get("arguments", {}).get("diff", "")
+                content_arg = call.get("arguments", {}).get("content", "")
+                file_path_arg = call.get("arguments", {}).get("file_path", "")
+
+                # Try to extract file path from diff
+                if diff_arg:
+                    import re
+                    match = re.search(r"---\s+(?:a/)?([\w\./_-]+)", diff_arg)
+                    if match:
+                        files_being_patched.add(match.group(1))
+                # Or from file_path argument
+                if file_path_arg:
+                    files_being_patched.add(file_path_arg)
+
+        # Filter out manage_file_ops calls for files that will be patched
+        filtered_approval_calls = []
+        for call in approval_calls:
+            if call["name"] == "manage_file_ops":
+                op = call.get("arguments", {}).get("operation", "").lower()
+                path = call.get("arguments", {}).get("path", "")
+                if op in ["create", "update", "write"] and path in files_being_patched:
+                    logger.info(f"[DEDUP] Skipping manage_file_ops for '{path}' - will be handled by apply_patch")
+                    # Add skip result to tool_results
+                    skip_output = ToolOutput(
+                        tool_name=call["name"],
+                        success=True,
+                        result={"status": "skipped", "reason": "handled_by_apply_patch", "file": path},
+                        error=None,
+                        timestamp=datetime.now().isoformat()
+                    )
+                    state["tool_results"].append(skip_output)
+                    state["messages"].append({
+                        "role": "tool",
+                        "tool_call_id": call.get("id", ""),
+                        "content": json.dumps({"success": True, "status": "skipped_duplicate", "file": path})
+                    })
+                    continue
+            filtered_approval_calls.append(call)
+
+        approval_calls = filtered_approval_calls
+
         # G3: Track completion for informative cancellation response
         completed_sequential = 0
         total_sequential = len(approval_calls)
-        
+
         for call in approval_calls:
             # G3: Check cancellation before each tool with informative response
             if state["is_cancelled"]:
@@ -1443,6 +1491,43 @@ async def tool_execution_node(state: MasterState) -> MasterState:
                         "tool_call_id": tool_call_id,
                         "content": json.dumps({"success": False, "error": str(e)})
                     })
+                    # BUG FIX: Removed duplicate message append (was copy-paste bug)
+                    continue
+
+            elif tool_name == "run_terminal_cmd":
+                # Handle run_terminal_cmd - this is called when LLM wants to run a command
+                # It should use the same flow as plan_terminal_cmd
+                try:
+                    registry = get_tool_registry()
+                    # If plan is provided, use it; otherwise create a plan from command
+                    plan_data = tool_args.get("plan", {})
+                    if not plan_data and tool_args.get("command"):
+                        # Create a plan from the command
+                        from src.tools.terminal import plan_terminal_cmd
+                        project_root = state.get("workspace_context", {}).get("project_root", "")
+                        plan_data = plan_terminal_cmd(
+                            command=tool_args["command"],
+                            rationale=tool_args.get("rationale", "User requested command execution"),
+                            project_root=Path(project_root) if project_root else Path.cwd()
+                        )
+                        if hasattr(plan_data, 'model_dump'):
+                            approval_data = plan_data.model_dump()
+                        else:
+                            approval_data = plan_data if isinstance(plan_data, dict) else {}
+                    else:
+                        approval_data = plan_data if isinstance(plan_data, dict) else {}
+
+                    approval_type = "terminal"
+                except Exception as e:
+                    logger.error(f"run_terminal_cmd plan creation failed: {e}", exc_info=True)
+                    error_output = ToolOutput(
+                        tool_name=tool_name,
+                        success=False,
+                        result="",
+                        error=f"Terminal command plan creation failed: {str(e)}",
+                        timestamp=datetime.now().isoformat()
+                    )
+                    state["tool_results"].append(error_output)
                     state["messages"].append({
                         "role": "tool",
                         "tool_call_id": tool_call_id,
@@ -1456,26 +1541,56 @@ async def tool_execution_node(state: MasterState) -> MasterState:
                     op = tool_args.get("operation", "unknown")
                     raw_path = tool_args.get("path", "unknown")
                     content = tool_args.get("content", "")
-                    
+
                     # Construct absolute path by joining project_root with relative path
-                    project_root = state.get("project_root", "")
+                    # BUG FIX: project_root is stored in workspace_context, not at top level
+                    project_root = state.get("workspace_context", {}).get("project_root", "")
                     if raw_path and not (raw_path.startswith('/') or ':' in raw_path):
                         # Relative path - prepend project_root
                         import os
                         abs_path = os.path.normpath(os.path.join(project_root, raw_path))
                     else:
                         abs_path = raw_path
-                    
+
+                    # SAFEGUARD: Skip empty file creation - let patch handle content
+                    # This prevents the problematic pattern where LLM creates empty file
+                    # then tries to patch it, causing approval confusion and path issues
+                    if op in ["create", "write"] and (content is None or content.strip() == ""):
+                        logger.warning(f"Skipping empty file creation for {raw_path} - content will be added via patch")
+                        # Execute the tool directly without approval (creates placeholder)
+                        try:
+                            registry = get_tool_registry()
+                            tool_output = registry.invoke_tool(tool_name, tool_args)
+                            state["tool_results"].append(tool_output)
+                            # Safely serialize tool output for message history
+                            try:
+                                result_content = json.dumps(tool_output.result if hasattr(tool_output, 'result') else str(tool_output))
+                            except (TypeError, ValueError):
+                                result_content = str(tool_output.result if hasattr(tool_output, 'result') else tool_output)
+                            state["messages"].append({
+                                "role": "tool",
+                                "tool_call_id": tool_call_id,
+                                "content": result_content
+                            })
+                            state["files_touched"].append(raw_path)
+                            log_entry = f"{datetime.now().isoformat()} - Auto-approved empty file creation: {raw_path}"
+                            state["execution_log"].append(log_entry)
+                        except Exception as e:
+                            logger.error(f"Empty file creation failed: {e}", exc_info=True)
+                            error_output = ToolOutput(tool_name=tool_name, success=False, result="", error=str(e), timestamp=datetime.now().isoformat())
+                            state["tool_results"].append(error_output)
+                        continue  # Skip normal approval flow
+
                     approval_data = {
                         "operation": op,
                         "path": abs_path,
                         "content": content,
                         "diff": None  # TODO: generate diff for update/create
                     }
-                    
+
                     # For file creation/updates, we might want to generate a diff if content is provided
                     # But for now, just showing the content in the approval is sufficient
-                    
+
                     approval_type = "file_write"
                 except Exception as e:
                     logger.error(f"File op approval prep failed: {e}", exc_info=True)
@@ -1483,6 +1598,49 @@ async def tool_execution_node(state: MasterState) -> MasterState:
                     error_output = ToolOutput(tool_name=tool_name, success=False, result="", error=str(e), timestamp=datetime.now().isoformat())
                     state["tool_results"].append(error_output)
                     continue
+
+            # =========================================================
+            # DEDUPLICATION: Skip if we've already requested approval for this exact action
+            # =========================================================
+            if approval_type is None or approval_data is None:
+                logger.warning(f"Skipping tool {tool_name} - no approval data prepared")
+                continue
+
+            # Generate a unique key for this approval
+            # PERMANENT FIX: Use FILE-BASED keys for file operations to catch duplicates
+            # when LLM calls both manage_file_ops AND apply_patch for same file
+            if approval_type == "patch":
+                approval_key = f"file:{approval_data.get('file_path', '')}"  # File-based key
+            elif approval_type == "file_write":
+                approval_key = f"file:{approval_data.get('path', '')}"  # Same namespace as patch
+            elif approval_type == "terminal":
+                approval_key = f"terminal:{approval_data.get('command', '')}"
+            else:
+                approval_key = f"{approval_type}:{hash(str(approval_data))}"
+
+            # Track approvals already processed in this run (use list for JSON serialization)
+            if "approvals_requested" not in state:
+                state["approvals_requested"] = []
+
+            if approval_key in state["approvals_requested"]:
+                logger.info(f"Skipping duplicate approval request: {approval_key}")
+                # Return success since we already asked for this
+                skip_output = ToolOutput(
+                    tool_name=tool_name,
+                    success=True,
+                    result={"status": "skipped", "reason": "duplicate_approval_request"},
+                    error=None,
+                    timestamp=datetime.now().isoformat()
+                )
+                state["tool_results"].append(skip_output)
+                state["messages"].append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": json.dumps({"success": True, "status": "duplicate_skipped"})
+                })
+                continue
+
+            state["approvals_requested"].append(approval_key)
 
             # Emit approval requested event
             await emit_approval_requested(approval_type, approval_data)

@@ -13,7 +13,9 @@ google-generativeai>=0.8.0
 
 # Agent Frameworks
 crewai>=0.80.0
-pyautogen>=0.2.0
+# PERMANENT FIX: Pin pyautogen to 0.2.35 for stable GroupChat API
+# The newer autogen-agentchat 0.4.x has a different API structure
+pyautogen==0.2.35
 
 # Database & Persistence
 python-dotenv>=1.0.0

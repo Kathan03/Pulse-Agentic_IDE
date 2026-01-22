@@ -754,6 +754,9 @@ class ToolRegistry:
         The implement_feature function is async, but invoke_tool is sync.
         We need to run it synchronously using asyncio.run() in a new event loop.
 
+        Post-processes results to automatically write files when patches have
+        direct content (no diff required).
+
         Args:
             args: Dict with keys: request, context (optional)
 
@@ -780,14 +783,75 @@ class ToolRegistry:
                         context=args.get("context")
                     )
                 )
-                return future.result(timeout=300)  # 5 minute timeout
+                result = future.result(timeout=300)  # 5 minute timeout
         except RuntimeError:
             # No running loop, we can use asyncio.run directly
-            return asyncio.run(implement_feature(
+            result = asyncio.run(implement_feature(
                 request=args["request"],
                 project_root=self.project_root,
                 context=args.get("context")
             ))
+
+        # Post-process: Auto-write files that have direct content (no diff)
+        result = self._process_implement_feature_patches(result)
+        return result
+
+    def _process_implement_feature_patches(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process implement_feature patches - auto-write files with direct content.
+
+        When CrewAI extracts code blocks instead of proper diffs, we get patches
+        with 'content' but no 'diff'. These should be written directly as new files.
+
+        Args:
+            result: Raw implement_feature result.
+
+        Returns:
+            Updated result with files_written metadata.
+        """
+        patch_plans = result.get("patch_plans", [])
+        files_written = []
+        patches_for_approval = []
+
+        for patch in patch_plans:
+            file_path = patch.get("file_path", "")
+            content = patch.get("content")
+            diff = patch.get("diff")
+
+            # If patch has direct content but no diff, write it immediately
+            if content and not diff:
+                try:
+                    write_result = manage_file_ops(
+                        operation="write",
+                        path=file_path,
+                        project_root=self.project_root,
+                        content=content,
+                        rag_manager=self.get_rag_manager()
+                    )
+                    if write_result.get("status") == "success":
+                        files_written.append(file_path)
+                        logger.info(f"Auto-wrote file from CrewAI: {file_path}")
+                    else:
+                        logger.error(f"Failed to auto-write {file_path}: {write_result.get('error')}")
+                        # Keep patch for manual handling
+                        patches_for_approval.append(patch)
+                except Exception as e:
+                    logger.error(f"Exception auto-writing {file_path}: {e}")
+                    patches_for_approval.append(patch)
+            else:
+                # Has diff, needs normal approval flow
+                patches_for_approval.append(patch)
+
+        # Update result with processing info
+        result["patch_plans"] = patches_for_approval
+        result["metadata"]["files_written_directly"] = files_written
+        result["metadata"]["patches_remaining_for_approval"] = len(patches_for_approval)
+
+        if files_written:
+            result["summary"] = f"{result.get('summary', '')} ({len(files_written)} files written directly)"
+            logger.info(f"CrewAI auto-wrote {len(files_written)} files: {files_written}")
+
+        return result
 
     def _wrap_diagnose_project(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """

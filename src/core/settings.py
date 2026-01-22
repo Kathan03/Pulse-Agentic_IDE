@@ -234,7 +234,8 @@ class SettingsManager:
         Returns:
             Complete settings dict with defaults filled in.
         """
-        merged = self.DEFAULT_SETTINGS.copy()
+        import copy
+        merged = copy.deepcopy(self.DEFAULT_SETTINGS)  # Deep copy to prevent mutation
 
         for section in ["api_keys", "models", "preferences"]:
             if section in settings:

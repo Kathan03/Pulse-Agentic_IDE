@@ -247,31 +247,7 @@ class LLMClient:
             "max_tokens_param": "max_completion_tokens",
             "supports_custom_temperature": False,
             "default_temperature": 1.0
-        },
-        # GPT-4.1.x family: max_completion_tokens, temperature=1 only
-        "gpt-4.1": {
-            "max_tokens_param": "max_completion_tokens",
-            "supports_custom_temperature": False,
-            "default_temperature": 1.0
-        },
-        # GPT-4o family: max_tokens, supports custom temperature
-        "gpt-4o": {
-            "max_tokens_param": "max_tokens",
-            "supports_custom_temperature": True,
-            "default_temperature": 0.7
-        },
-        # GPT-4-turbo: max_tokens, supports custom temperature
-        "gpt-4-turbo": {
-            "max_tokens_param": "max_tokens",
-            "supports_custom_temperature": True,
-            "default_temperature": 0.7
-        },
-        # GPT-3.5: max_tokens, supports custom temperature
-        "gpt-3.5": {
-            "max_tokens_param": "max_tokens",
-            "supports_custom_temperature": True,
-            "default_temperature": 0.7
-        },
+        },  
         # Claude models: max_tokens, supports custom temperature
         "claude": {
             "max_tokens_param": "max_tokens",
@@ -427,34 +403,15 @@ class LLMClient:
         if self.openai_client is not None:
             return self.openai_client
 
-        # Check if in development mode
-        dev_mode = os.getenv("DEV_MODE", "false").lower() == "true"
-
-        api_key = None
-
-        if dev_mode:
-            # Development mode: ONLY use .env (skip platformdirs)
-            api_key = os.getenv("OPENAI_API_KEY")
-            if api_key:
-                logger.info(f"[DEV MODE] Using OpenAI API key from .env: {api_key[:20]}...")
-            else:
-                logger.error("[DEV MODE] OPENAI_API_KEY not found in .env file")
-        else:
-            # Production mode: Try Settings UI first, fallback to .env
-            api_key = self.settings.get_api_key("openai")
-            if api_key:
-                logger.info("[PRODUCTION] Using OpenAI API key from Settings UI")
-            else:
-                # Fallback to .env
-                api_key = os.getenv("OPENAI_API_KEY")
-                if api_key:
-                    logger.info(f"[PRODUCTION] Fallback: Using OpenAI API key from .env: {api_key[:20]}...")
+        # Load API key from config.json (platformdirs) - single source of truth
+        api_key = self.settings.get_api_key("openai")
+        if api_key:
+            logger.info("Using OpenAI API key from config.json")
 
         if not api_key:
             raise ValueError(
                 "OpenAI API key not configured. "
-                "Development: Set DEV_MODE=true and OPENAI_API_KEY in .env file. "
-                "Production: Configure in Settings → API Keys."
+                "Configure your API key in Settings → API Keys."
             )
 
         if not OPENAI_AVAILABLE:
@@ -485,34 +442,15 @@ class LLMClient:
         if self.anthropic_client is not None:
             return self.anthropic_client
 
-        # Check if in development mode
-        dev_mode = os.getenv("DEV_MODE", "false").lower() == "true"
-
-        api_key = None
-
-        if dev_mode:
-            # Development mode: ONLY use .env (skip platformdirs)
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            if api_key:
-                logger.info(f"[DEV MODE] Using Anthropic API key from .env: {api_key[:20]}...")
-            else:
-                logger.error("[DEV MODE] ANTHROPIC_API_KEY not found in .env file")
-        else:
-            # Production mode: Try Settings UI first, fallback to .env
-            api_key = self.settings.get_api_key("anthropic")
-            if api_key:
-                logger.info("[PRODUCTION] Using Anthropic API key from Settings UI")
-            else:
-                # Fallback to .env
-                api_key = os.getenv("ANTHROPIC_API_KEY")
-                if api_key:
-                    logger.info(f"[PRODUCTION] Fallback: Using Anthropic API key from .env: {api_key[:20]}...")
+        # Load API key from config.json (platformdirs) - single source of truth
+        api_key = self.settings.get_api_key("anthropic")
+        if api_key:
+            logger.info("Using Anthropic API key from config.json")
 
         if not api_key:
             raise ValueError(
                 "Anthropic API key not configured. "
-                "Development: Set DEV_MODE=true and ANTHROPIC_API_KEY in .env file. "
-                "Production: Configure in Settings → API Keys."
+                "Configure your API key in Settings → API Keys."
             )
 
         if not ANTHROPIC_AVAILABLE:
@@ -540,34 +478,15 @@ class LLMClient:
         if self.google_configured:
             return
 
-        # Check if in development mode
-        dev_mode = os.getenv("DEV_MODE", "false").lower() == "true"
-
-        api_key = None
-
-        if dev_mode:
-            # Development mode: ONLY use .env (skip platformdirs)
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if api_key:
-                logger.info(f"[DEV MODE] Using Google API key from .env: {api_key[:20]}...")
-            else:
-                logger.error("[DEV MODE] GOOGLE_API_KEY not found in .env file")
-        else:
-            # Production mode: Try Settings UI first, fallback to .env
-            api_key = self.settings.get_api_key("google")
-            if api_key:
-                logger.info("[PRODUCTION] Using Google API key from Settings UI")
-            else:
-                # Fallback to .env
-                api_key = os.getenv("GOOGLE_API_KEY")
-                if api_key:
-                    logger.info(f"[PRODUCTION] Fallback: Using Google API key from .env: {api_key[:20]}...")
+        # Load API key from config.json (platformdirs) - single source of truth
+        api_key = self.settings.get_api_key("google")
+        if api_key:
+            logger.info("Using Google API key from config.json")
 
         if not api_key:
             raise ValueError(
                 "Google API key not configured. "
-                "Development: Set DEV_MODE=true and GOOGLE_API_KEY in .env file. "
-                "Production: Configure in Settings → API Keys."
+                "Configure your API key in Settings → API Keys."
             )
 
         if not GOOGLE_AVAILABLE:

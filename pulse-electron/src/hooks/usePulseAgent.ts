@@ -197,6 +197,14 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
           // Run completed event - vibe will be deactivated when run_result is processed
           break;
 
+        case 'approval_processed':
+          // Server confirms approval was processed - resume vibe and update status
+          console.log('[usePulseAgent] Approval processed:', data);
+          setRunStatus('running');
+          setVibeActive(true);
+          setVibeCategory('action');
+          break;
+
         default:
           console.log('[usePulseAgent] Unknown event type:', event_type);
       }
@@ -565,8 +573,25 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
     const unsubscribe = useAgentStore.subscribe(
       (state) => state.messages,
       (messages: Message[]) => {
-        // Check if a new message was added
+        // IMPORTANT: If messages were reset (e.g., loadConversationHistory), sync the ref
+        // This prevents auto-sending when loading conversation history
+        if (messages.length < lastMessageCountRef.current) {
+          // Messages were replaced/cleared - sync ref without sending
+          lastMessageCountRef.current = messages.length;
+          return;
+        }
+
+        // Check if a new message was added (incrementally)
         if (messages.length > lastMessageCountRef.current) {
+          // PERMANENT FIX: Skip if we're loading conversation history
+          // This prevents auto-sending the last user message when opening old conversations
+          const storeState = useAgentStore.getState();
+          if (storeState.isLoadingHistory) {
+            console.log('[usePulseAgent] Skipping auto-send - loading conversation history');
+            lastMessageCountRef.current = messages.length;
+            return;
+          }
+
           const newMessage = messages[messages.length - 1];
 
           // Only send user messages that are new
@@ -575,7 +600,6 @@ export function usePulseAgent(options: UsePulseAgentOptions = {}): UsePulseAgent
 
             // Check connection status from STORE (not wsRef which has stale closure)
             // The store's isConnected is properly updated when WebSocket connects
-            const storeState = useAgentStore.getState();
             console.log('[usePulseAgent] Connection check - isConnected:', storeState.isConnected, 'projectRoot:', projectRoot);
 
             if (!storeState.isConnected) {

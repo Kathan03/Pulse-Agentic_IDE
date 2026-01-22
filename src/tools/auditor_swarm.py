@@ -26,17 +26,42 @@ import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-# AutoGen imports - using pyautogen package
+# AutoGen imports - PERMANENT FIX: Prioritize pyautogen 0.2.x (pinned version)
+# We pin to pyautogen==0.2.35 in requirements.txt for stable GroupChat API
+AUTOGEN_AVAILABLE = False
+AUTOGEN_PACKAGE_INFO = "not_installed"
+_import_errors = []
+
+# Strategy 1 (PREFERRED): pyautogen direct (pyautogen 0.2.x - our pinned version)
 try:
-    from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
+    from pyautogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
     AUTOGEN_AVAILABLE = True
-except ImportError:
+    AUTOGEN_PACKAGE_INFO = "pyautogen==0.2.x"
+    logging.getLogger(__name__).info("AutoGen loaded via 'pyautogen' (0.2.x - pinned)")
+except ImportError as e1:
+    _import_errors.append(f"pyautogen: {e1}")
+
+    # Strategy 2: pyautogen.agentchat (alternative import path for some 0.2.x versions)
     try:
-        # Alternative import for newer versions
-        from pyautogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
+        from pyautogen.agentchat import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
         AUTOGEN_AVAILABLE = True
-    except ImportError:
-        AUTOGEN_AVAILABLE = False
+        AUTOGEN_PACKAGE_INFO = "pyautogen.agentchat"
+        logging.getLogger(__name__).info("AutoGen loaded via 'pyautogen.agentchat'")
+    except ImportError as e2:
+        _import_errors.append(f"pyautogen.agentchat: {e2}")
+
+        # Strategy 3: autogen direct (Microsoft autogen package - fallback)
+        try:
+            from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
+            AUTOGEN_AVAILABLE = True
+            AUTOGEN_PACKAGE_INFO = "autogen"
+            logging.getLogger(__name__).info("AutoGen loaded via 'autogen'")
+        except ImportError as e3:
+            _import_errors.append(f"autogen: {e3}")
+            logging.getLogger(__name__).warning(
+                f"AutoGen not available. Tried imports:\n  " + "\n  ".join(_import_errors) +
+                f"\n\nFix: pip uninstall autogen autogen-agentchat pyautogen -y && pip install pyautogen==0.2.35"
+            )
 
 from src.core.settings import get_settings_manager
 from src.core.prompts import AUTOGEN_AUDITOR_PROMPT
@@ -87,20 +112,14 @@ def _create_llm_config(model: str, settings: Dict[str, Any]) -> Optional[Dict[st
     """
     provider = _get_provider(model)
     api_keys = settings.get("api_keys", {})
-    
-    # Check for DEV_MODE (use .env instead of settings)
-    dev_mode = os.getenv("DEV_MODE", "false").lower() == "true"
-    
+
     try:
         if provider == "openai":
-            api_key = os.getenv("OPENAI_API_KEY") if dev_mode else api_keys.get("openai", "")
+            api_key = api_keys.get("openai", "")
             if not api_key:
-                api_key = os.getenv("OPENAI_API_KEY", "")  # Fallback to env
-            
-            if not api_key:
-                logger.error("OpenAI API key not configured")
+                logger.error("OpenAI API key not configured in Settings → API Keys")
                 return None
-            
+
             logger.info(f"Creating OpenAI LLM config for AutoGen: {model}")
             return {
                 "config_list": [{
@@ -109,18 +128,14 @@ def _create_llm_config(model: str, settings: Dict[str, Any]) -> Optional[Dict[st
                 }],
                 "temperature": 0.4,
             }
-        
+
         elif provider == "anthropic":
-            api_key = os.getenv("ANTHROPIC_API_KEY") if dev_mode else api_keys.get("anthropic", "")
+            api_key = api_keys.get("anthropic", "")
             if not api_key:
-                api_key = os.getenv("ANTHROPIC_API_KEY", "")  # Fallback to env
-            
-            if not api_key:
-                logger.error("Anthropic API key not configured")
+                logger.error("Anthropic API key not configured in Settings → API Keys")
                 return None
-            
+
             logger.info(f"Creating Anthropic LLM config for AutoGen: {model}")
-            # AutoGen supports Anthropic via the anthropic API type
             return {
                 "config_list": [{
                     "model": model,
@@ -129,18 +144,14 @@ def _create_llm_config(model: str, settings: Dict[str, Any]) -> Optional[Dict[st
                 }],
                 "temperature": 0.4,
             }
-        
+
         elif provider == "google":
-            api_key = os.getenv("GOOGLE_API_KEY") if dev_mode else api_keys.get("google", "")
+            api_key = api_keys.get("google", "")
             if not api_key:
-                api_key = os.getenv("GOOGLE_API_KEY", "")  # Fallback to env
-            
-            if not api_key:
-                logger.error("Google API key not configured")
+                logger.error("Google API key not configured in Settings → API Keys")
                 return None
-            
+
             logger.info(f"Creating Google LLM config for AutoGen: {model}")
-            # AutoGen supports Google Gemini via the google API type
             return {
                 "config_list": [{
                     "model": model,
@@ -290,45 +301,107 @@ def _run_deterministic_checks(
             }
         }
 
-    # Check 2: Look for common PLC file extensions
-    plc_files = list(project_root.glob("**/*.st")) + list(project_root.glob("**/*.scl"))
-    if not plc_files:
+    # Check 2: Look for common source file extensions
+    # Support multiple languages: PLC (.st, .scl), Python (.py), JavaScript/TypeScript (.js, .ts, .tsx), etc.
+    source_extensions = [
+        "**/*.st", "**/*.scl",  # PLC/IEC 61131-3
+        "**/*.py",              # Python
+        "**/*.js", "**/*.ts", "**/*.tsx", "**/*.jsx",  # JavaScript/TypeScript
+        "**/*.java",            # Java
+        "**/*.c", "**/*.cpp", "**/*.h", "**/*.hpp",    # C/C++
+        "**/*.go",              # Go
+        "**/*.rs",              # Rust
+        "**/*.rb",              # Ruby
+        "**/*.php",             # PHP
+        "**/*.cs",              # C#
+    ]
+
+    source_files = []
+    for ext in source_extensions:
+        source_files.extend(project_root.glob(ext))
+
+    # Deduplicate and exclude common non-source directories
+    source_files = [
+        f for f in source_files
+        if not any(excluded in f.parts for excluded in [
+            'node_modules', '__pycache__', '.git', 'venv', '.venv',
+            'dist', 'build', '.next', 'target', 'bin', 'obj'
+        ])
+    ]
+
+    if not source_files:
         findings.append({
             "severity": "WARNING",
             "file": "N/A",
             "line": 0,
-            "message": "No PLC source files (.st, .scl) found in workspace"
+            "message": "No source files found in workspace"
         })
 
+    logger.info(f"Found {len(source_files)} source files for analysis")
+
     # Check 3: Basic syntax validation (look for common patterns)
-    for plc_file in plc_files[:10]:  # Limit to first 10 files for performance
+    for source_file in source_files[:20]:  # Limit to first 20 files for performance
         try:
-            content = plc_file.read_text(encoding="utf-8", errors="ignore")
+            content = source_file.read_text(encoding="utf-8", errors="ignore")
+            file_ext = source_file.suffix.lower()
 
-            # Check for balanced VAR/END_VAR blocks
-            var_count = content.count("VAR")
-            end_var_count = content.count("END_VAR")
-            if var_count != end_var_count:
-                findings.append({
-                    "severity": "ERROR",
-                    "file": str(plc_file.relative_to(project_root)),
-                    "line": 0,
-                    "message": f"Unbalanced VAR blocks ({var_count} VAR, {end_var_count} END_VAR)"
-                })
-                prioritized_fixes.append({
-                    "priority": 2,
-                    "action": f"Fix VAR/END_VAR balance in {plc_file.name}",
-                    "rationale": "Unbalanced variable blocks will cause compilation errors"
-                })
+            # PLC-specific checks (.st, .scl)
+            if file_ext in ['.st', '.scl']:
+                var_count = content.count("VAR")
+                end_var_count = content.count("END_VAR")
+                if var_count != end_var_count:
+                    findings.append({
+                        "severity": "ERROR",
+                        "file": str(source_file.relative_to(project_root)),
+                        "line": 0,
+                        "message": f"Unbalanced VAR blocks ({var_count} VAR, {end_var_count} END_VAR)"
+                    })
+                    prioritized_fixes.append({
+                        "priority": 2,
+                        "action": f"Fix VAR/END_VAR balance in {source_file.name}",
+                        "rationale": "Unbalanced variable blocks will cause compilation errors"
+                    })
 
-            # Check for undefined variables (basic heuristic)
-            # TODO: More sophisticated parsing if needed
+            # Python-specific checks (.py)
+            elif file_ext == '.py':
+                # Check for common security issues
+                if 'eval(' in content or 'exec(' in content:
+                    findings.append({
+                        "severity": "WARNING",
+                        "file": str(source_file.relative_to(project_root)),
+                        "line": 0,
+                        "message": "Uses eval() or exec() - potential code injection risk"
+                    })
+                if 'subprocess.shell=True' in content or 'shell=True' in content:
+                    findings.append({
+                        "severity": "WARNING",
+                        "file": str(source_file.relative_to(project_root)),
+                        "line": 0,
+                        "message": "Uses shell=True in subprocess - potential command injection risk"
+                    })
+
+            # JavaScript/TypeScript checks
+            elif file_ext in ['.js', '.ts', '.tsx', '.jsx']:
+                if 'eval(' in content:
+                    findings.append({
+                        "severity": "WARNING",
+                        "file": str(source_file.relative_to(project_root)),
+                        "line": 0,
+                        "message": "Uses eval() - potential code injection risk"
+                    })
+                if 'innerHTML' in content and 'dangerouslySetInnerHTML' not in content:
+                    findings.append({
+                        "severity": "INFO",
+                        "file": str(source_file.relative_to(project_root)),
+                        "line": 0,
+                        "message": "Uses innerHTML - verify input is sanitized to prevent XSS"
+                    })
 
         except Exception as e:
-            logger.warning(f"Failed to read {plc_file}: {e}")
+            logger.warning(f"Failed to read {source_file}: {e}")
             findings.append({
                 "severity": "WARNING",
-                "file": str(plc_file.relative_to(project_root)),
+                "file": str(source_file.relative_to(project_root)),
                 "line": 0,
                 "message": f"Failed to read file: {str(e)}"
             })
@@ -363,7 +436,7 @@ def _run_deterministic_checks(
             "autogen_enabled": False,
             "stage": "A_only",
             "deterministic_checks": True,
-            "files_scanned": len(plc_files)
+            "files_scanned": len(source_files)
         }
     }
 
@@ -403,10 +476,16 @@ def _run_autogen_sync(
     try:
         # Check if AutoGen is available
         if not AUTOGEN_AVAILABLE:
-            logger.error("AutoGen not installed. Run: pip install pyautogen")
+            logger.error(
+                f"AutoGen not available (package_info={AUTOGEN_PACKAGE_INFO}). "
+                f"Install with: pip install pyautogen"
+            )
             stage_a_result["metadata"]["autogen_enabled"] = False
             stage_a_result["metadata"]["error"] = "autogen_not_installed"
+            stage_a_result["metadata"]["autogen_package_info"] = AUTOGEN_PACKAGE_INFO
             return stage_a_result
+
+        logger.info(f"AutoGen available via '{AUTOGEN_PACKAGE_INFO}' package")
         
         # Extract model settings
         model_name = settings.get("models", {}).get("autogen_auditor", "gpt-4o-mini")

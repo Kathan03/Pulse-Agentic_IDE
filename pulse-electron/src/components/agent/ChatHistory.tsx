@@ -103,14 +103,16 @@ export function ChatHistory() {
                 // Set the conversation ID so subsequent messages continue this conversation
                 useAgentStore.getState().setConversationId(conv.id);
 
-                // Add existing messages to store
+                // Load existing messages to store WITHOUT triggering auto-send
+                // Using loadConversationHistory instead of addMessage to prevent
+                // the subscription in usePulseAgent from sending the last user message
                 if (data.messages && data.messages.length > 0) {
-                    data.messages.forEach((msg: { role: string; content: string }) => {
-                        useAgentStore.getState().addMessage({
+                    useAgentStore.getState().loadConversationHistory(
+                        data.messages.map((msg: { role: string; content: string }) => ({
                             role: msg.role as 'user' | 'assistant',
                             content: msg.content,
-                        });
-                    });
+                        }))
+                    );
                 }
 
                 setIsOpen(false);

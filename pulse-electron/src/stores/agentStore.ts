@@ -77,6 +77,7 @@ interface AgentState {
   // Messages
   messages: Message[];
   streamingContent: string;
+  isLoadingHistory: boolean;  // PERMANENT FIX: Flag to prevent auto-send when loading history
 
   // Vibe animation
   vibe: VibeState;
@@ -103,6 +104,7 @@ interface AgentActions {
 
   // Messages
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void;
+  loadConversationHistory: (messages: Array<{ role: MessageRole; content: string }>) => void;
   updateStreamingContent: (chunk: string) => void;
   finalizeStreaming: () => void;
   clearMessages: () => void;
@@ -135,6 +137,7 @@ const initialState: AgentState = {
   mode: 'agent',
   messages: [],
   streamingContent: '',
+  isLoadingHistory: false,  // PERMANENT FIX: Prevents auto-send when loading conversation history
   vibe: {
     isActive: false,
     category: 'thinking',
@@ -252,6 +255,29 @@ export const useAgentStore = create<AgentState & AgentActions>()(
           },
         ],
       }));
+    },
+
+    /**
+     * Load conversation history without triggering auto-send.
+     * PERMANENT FIX: Sets isLoadingHistory flag to prevent the subscription
+     * in usePulseAgent from sending the last user message.
+     */
+    loadConversationHistory: (messages) => {
+      // Set flag BEFORE updating messages to prevent race condition
+      set({
+        isLoadingHistory: true,
+        messages: messages.map((msg, index) => ({
+          ...msg,
+          id: crypto.randomUUID(),
+          // Use sequential timestamps from past to preserve order
+          timestamp: Date.now() - (messages.length - index) * 1000,
+        })),
+      });
+      // Clear flag after React has processed the state update
+      // Using setTimeout to ensure subscription sees the flag during message update
+      setTimeout(() => {
+        set({ isLoadingHistory: false });
+      }, 100);  // Small delay to ensure flag is checked during subscription
     },
 
     updateStreamingContent: (chunk) => {

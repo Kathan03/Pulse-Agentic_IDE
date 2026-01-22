@@ -92,7 +92,7 @@ These tests verify the Multi-Agent Systems (LangGraph + CrewAI + AutoGen).
 ### 3.1 Complex Feature Implementation (CrewAI)
 **Enable "CrewAI Builder" in Settings first.**
 
-*   **Query**: `"Create a snake game python script called snake.py"`
+*   **Query**: `"Create a snake game python script called snake.py"` or `"Create a snake game python script called snake_k.py, use crew AI."`
 *   **Workflow**:
     1.  **Planner Agent**: Breaks down game logic.
     2.  **Coder Agent**: Writes the code.

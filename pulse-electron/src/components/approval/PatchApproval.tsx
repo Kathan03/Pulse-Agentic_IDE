@@ -41,6 +41,11 @@ export function PatchApproval({ approval, onApprove, onDeny }: PatchApprovalProp
   const addedLines = countAddedLines(data.original_content, data.patched_content);
   const removedLines = countRemovedLines(data.original_content, data.patched_content);
 
+  // Determine if this is a file creation vs modification
+  const isFileCreation = data.original_content === '' ||
+    (rawData.operation as string)?.toLowerCase() === 'create' ||
+    (rawData.action as string)?.toLowerCase() === 'create';
+
   return (
     <div className="bg-pulse-bg-secondary rounded-lg shadow-modal overflow-hidden">
       {/* Header */}
@@ -49,10 +54,10 @@ export function PatchApproval({ approval, onApprove, onDeny }: PatchApprovalProp
           <div>
             <h2 className="text-lg font-semibold text-pulse-fg flex items-center">
               <FileIcon />
-              <span className="ml-2">File Change Approval</span>
+              <span className="ml-2">{isFileCreation ? 'File Creation Approval' : 'File Change Approval'}</span>
             </h2>
             <p className="text-sm text-pulse-fg-muted mt-1">
-              The agent wants to modify <span className="font-mono text-pulse-primary">{fileName}</span>
+              The agent wants to {isFileCreation ? 'create' : 'modify'} <span className="font-mono text-pulse-primary">{fileName}</span>
             </p>
           </div>
 

@@ -89,9 +89,15 @@ def is_run_active() -> bool:
     return _current_run_id is not None
 
 
-def cancel_current_run() -> bool:
+def cancel_current_run(force_timeout: float = 10.0) -> bool:
     """
     Cancel the currently active run.
+
+    PERMANENT FIX: Adds timeout-based forced cleanup to ensure run state
+    is reset even if the graph is stuck in a long operation.
+
+    Args:
+        force_timeout: Seconds to wait before forcing cleanup (default 10s).
 
     Returns:
         True if cancellation signal was sent, False if no run is active.
@@ -101,15 +107,39 @@ def cancel_current_run() -> bool:
         >>> if cancel_current_run():
         ...     print("Run cancelled")
     """
-    global _cancellation_event
+    global _cancellation_event, _current_run_id, _waiting_for_approval
 
     if not is_run_active():
         logger.warning("cancel_current_run called but no run is active")
         return False
 
+    run_id_to_cancel = _current_run_id
+
     if _cancellation_event is not None:
         _cancellation_event.set()
-        logger.info(f"Cancellation signal sent for run {_current_run_id}")
+        logger.info(f"Cancellation signal sent for run {run_id_to_cancel}")
+
+        # Start a background task to force cleanup after timeout
+        async def force_cleanup():
+            await asyncio.sleep(force_timeout)
+            global _current_run_id, _waiting_for_approval
+            # Check if the same run is still active (wasn't cleaned up normally)
+            if _current_run_id == run_id_to_cancel:
+                logger.warning(f"Force cancelling run {run_id_to_cancel} after {force_timeout}s timeout")
+                _current_run_id = None
+                _waiting_for_approval = False
+
+        # Schedule force cleanup (don't await - run in background)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(force_cleanup())
+            else:
+                # If no event loop running, just log warning
+                logger.warning("Cannot schedule force cleanup - no running event loop")
+        except RuntimeError:
+            logger.warning("Cannot schedule force cleanup - no event loop")
+
         return True
 
     return False
@@ -630,13 +660,25 @@ async def resume_with_approval(
 
     logger.info(f"Resume complete for run {run_id}")
     
-    # Cleanup after resume
+    # Check if graph is still paused (waiting for another approval)
+    # If so, don't cleanup yet - let the next approval resume
+    graph_snapshot = graph.get_state(thread_config)
+    if graph_snapshot and graph_snapshot.next:
+        # Graph is paused at another node (pending approval)
+        logger.info(f"Run {run_id} paused again at {graph_snapshot.next}, keeping state active")
+        _waiting_for_approval = True
+        # Add paused flag so websocket handler knows not to clear session
+        result["paused"] = True
+        return result
+    
+    # Only cleanup if truly complete (no pending nodes)
     async with _run_lock:
         _current_run_id = None
         _cancellation_event = None
         _current_conversation_id = None
         _current_conversation_db = None
         _current_project_root = None
+        _waiting_for_approval = False
         logger.info(f"Run {run_id} cleanup complete after resume")
     
     return result

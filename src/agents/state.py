@@ -40,11 +40,19 @@ class PatchPlan(BaseModel):
         diff: Unified diff string.
         rationale: Explanation of why this change is needed.
         action: Type of change ("create", "modify", "delete").
+        original_content: Original file content (for preview).
+        patched_content: Patched file content (for preview and execution).
+        additions: Number of lines added.
+        deletions: Number of lines deleted.
     """
     file_path: str = Field(..., description="Target file path (relative to project root)")
     diff: str = Field(..., description="Unified diff string")
     rationale: str = Field(..., description="Explanation of why this change is needed")
     action: Literal["create", "modify", "delete"] = Field(default="modify", description="Type of change")
+    original_content: Optional[str] = Field(None, description="Original file content (for preview)")
+    patched_content: Optional[str] = Field(None, description="Patched file content (for preview and execution)")
+    additions: int = Field(default=0, description="Number of lines added")
+    deletions: int = Field(default=0, description="Number of lines deleted")
 
 
 class CommandPlan(BaseModel):
@@ -296,6 +304,16 @@ class MasterState(TypedDict):
     - Test validation (Phase 6)
     """
 
+    approvals_requested: List[str]
+    """
+    List of approval keys already requested in this run.
+
+    Used to deduplicate approval requests when LLM requests
+    the same tool multiple times for the same file/command.
+
+    Format: List of strings like "patch:snake.py" or "terminal:git status"
+    """
+
     # ========================================================================
     # Workspace Context
     # ========================================================================
@@ -400,6 +418,7 @@ def create_initial_master_state(
         patch_plans=[],
         terminal_commands=[],
         files_touched=[],
+        approvals_requested=[],  # For deduplication
 
         # Workspace context
         workspace_context={

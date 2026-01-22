@@ -145,8 +145,25 @@ class RAGManager:
                 logger.warning(f"Bundled models directory not found: {bundled_models_dir}")
                 logger.warning("RAG search may fail or be slow on first use")
         
-        # Development mode or fallback - use default (may download model)
-        return None
+        # Development mode or fallback - explicitly provide embedding function
+        # BUG FIX: ChromaDB no longer has a default embedding function in recent versions
+        # We must explicitly provide one to avoid "must provide an embedding function" error
+        try:
+            # Try to use the default ONNX embedding function
+            from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+            logger.info("Using ONNXMiniLM_L6_V2 embedding function")
+            return ONNXMiniLM_L6_V2(preferred_providers=["CPUExecutionProvider"])
+        except Exception as e:
+            logger.warning(f"Failed to create embedding function: {e}")
+            # Last resort: try the default embedding function
+            try:
+                from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+                logger.info("Using DefaultEmbeddingFunction")
+                return DefaultEmbeddingFunction()
+            except Exception as e2:
+                logger.error(f"Could not create any embedding function: {e2}")
+                logger.error("RAG search will not work without an embedding function")
+                return None
 
 
     def _init_freshness_db(self) -> None:
@@ -537,9 +554,18 @@ def search_workspace(
         return formatted_results
 
     try:
+        # In packaged mode (PyInstaller), ChromaDB embedding models may not be available
+        # and downloading them can hang. Use a simple fallback in this case.
+        import sys
+        if getattr(sys, 'frozen', False):
+            logger.info("Packaged mode detected - using simple keyword search fallback")
+            return _simple_keyword_search(query, project_root, k)
+        
         # Use ThreadPoolExecutor with timeout to prevent indefinite hangs
-        # Issue #4 fix: ChromaDB may hang downloading embedding models in packaged mode
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        # IMPORTANT: Use manual executor creation with shutdown(wait=False)
+        # to prevent the executor from blocking forever on stuck threads
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
             future = executor.submit(_do_search)
             try:
                 result = future.result(timeout=30)  # 30 second timeout
@@ -549,9 +575,80 @@ def search_workspace(
                 logger.error("Workspace search timed out after 30 seconds")
                 logger.warning("RAG initialization may be stuck (e.g., downloading embedding models)")
                 return []
+        finally:
+            # shutdown(wait=False) prevents blocking on stuck threads
+            # cancel_futures=True attempts to cancel pending futures
+            executor.shutdown(wait=False, cancel_futures=True)
                 
     except Exception as e:
         logger.error(f"Workspace search failed: {e}", exc_info=True)
+        return []
+
+
+def _simple_keyword_search(query: str, project_root: Path, k: int = 5) -> List[Dict[str, Any]]:
+    """
+    Simple keyword-based search fallback for packaged mode.
+    
+    Uses basic file content matching instead of ChromaDB embeddings.
+    """
+    import os
+    import fnmatch
+    
+    results = []
+    query_lower = query.lower()
+    query_words = query_lower.split()
+    
+    # Search common code file extensions
+    code_extensions = {'.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.cpp', '.c', '.h', '.st', '.md', '.txt'}
+    
+    try:
+        for root, dirs, files in os.walk(project_root):
+            # Skip hidden and common ignored directories
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in {'node_modules', 'venv', '__pycache__', 'dist', 'build'}]
+            
+            for file in files:
+                ext = os.path.splitext(file)[1].lower()
+                if ext not in code_extensions:
+                    continue
+                    
+                file_path = os.path.join(root, file)
+                rel_path = os.path.relpath(file_path, project_root)
+                
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                    
+                    content_lower = content.lower()
+                    
+                    # Score based on word matches
+                    score = sum(1 for word in query_words if word in content_lower)
+                    
+                    if score > 0:
+                        # Take first 500 chars as snippet
+                        snippet = content[:500]
+                        results.append({
+                            "file_path": rel_path,
+                            "content": snippet,
+                            "chunk_index": 0,
+                            "total_chunks": 1,
+                            "distance": 1.0 / (score + 1),  # Lower is better
+                            "_score": score
+                        })
+                except Exception:
+                    continue
+            
+            if len(results) >= k * 3:  # Collect enough to sort
+                break
+        
+        # Sort by score (descending) and return top k
+        results.sort(key=lambda x: x.get("_score", 0), reverse=True)
+        for r in results:
+            r.pop("_score", None)
+        
+        return results[:k]
+        
+    except Exception as e:
+        logger.error(f"Simple keyword search failed: {e}")
         return []
 
 

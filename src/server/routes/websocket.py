@@ -387,11 +387,13 @@ async def handle_approval_response(
             data={"run_id": run_id, "success": result.get("success", False)}
         )
         
-        # Clear session run state now that resume is complete
-        session_manager = get_session_manager()
-        await session_manager.clear_run(run_id)
-        
-        logger.info(f"Resume result sent for run {run_id}: success={result.get('success')}")
+        # Only clear session run state if run is truly complete (not paused for another approval)
+        if not result.get("paused", False):
+            session_manager = get_session_manager()
+            await session_manager.clear_run(run_id)
+            logger.info(f"Resume result sent for run {run_id}: success={result.get('success')}")
+        else:
+            logger.info(f"Run {run_id} still paused for another approval, keeping session active")
 
     except Exception as e:
         logger.error(f"Error handling approval response: {e}", exc_info=True)
